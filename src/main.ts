@@ -12,7 +12,6 @@ interface Settings {
     watchedFolder: string;
     databasePath: string;
     openAIApiKey: string;
-    version: string;
     fileExtensions: string;
     recursive: boolean;
     mcpServerEnabled: boolean;
@@ -25,7 +24,6 @@ const store = new Store<Settings>({
         watchedFolder: '',
         databasePath: '',
         openAIApiKey: '',
-        version: '1.0.0',
         fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx',
         recursive: true,
         mcpServerEnabled: false,
@@ -216,7 +214,6 @@ function setupIpcHandlers() {
             watchedFolder: store.get('watchedFolder'),
             databasePath: store.get('databasePath'),
             openAIApiKey: store.get('openAIApiKey'),
-            version: store.get('version'),
             fileExtensions: store.get('fileExtensions'),
             recursive: store.get('recursive'),
             mcpServerEnabled: store.get('mcpServerEnabled'),
@@ -357,14 +354,12 @@ function setupIpcHandlers() {
 
     // Force full sync
     ipcMain.handle('force-sync', async () => {
-        const version = store.get('version') as string;
-
         if (!database) {
             return { success: false, error: 'Database not initialized' };
         }
 
         database.clearAllData();
-        await performInitialSync(version, true); // Force reprocess all
+        await performInitialSync(true); // Force reprocess all
         sendStats();
         return { success: true };
     });
@@ -375,7 +370,6 @@ async function startWatchingInternal(): Promise<{ success: boolean; error?: stri
     const watchedFolder = store.get('watchedFolder') as string;
     const databasePath = store.get('databasePath') as string;
     const openAIApiKey = store.get('openAIApiKey') as string;
-    const version = store.get('version') as string;
     const fileExtensions = store.get('fileExtensions') as string;
     const recursive = store.get('recursive') as boolean;
 
@@ -423,11 +417,11 @@ async function startWatchingInternal(): Promise<{ success: boolean; error?: stri
             recursive,
             extensions,
             onFileAdd: async (filePath) => {
-                await processFile(filePath, version);
+                await processFile(filePath);
                 sendStats();
             },
             onFileChange: async (filePath) => {
-                await processFile(filePath, version);
+                await processFile(filePath);
                 sendStats();
             },
             onFileDelete: async (filePath) => {
@@ -443,7 +437,7 @@ async function startWatchingInternal(): Promise<{ success: boolean; error?: stri
         syncCancelled = false;
 
         // Initial sync
-        await performInitialSync(version);
+        await performInitialSync();
         sendStats();
         updateTray();
 
@@ -457,7 +451,7 @@ async function startWatchingInternal(): Promise<{ success: boolean; error?: stri
 // Flag to track if sync is in progress and should continue
 let syncCancelled = false;
 
-async function processFile(filePath: string, version: string, forceReprocess: boolean = false) {
+async function processFile(filePath: string, forceReprocess: boolean = false) {
     if (!database || !processor) return;
     
     // Check if sync was cancelled
@@ -509,7 +503,7 @@ async function processFile(filePath: string, version: string, forceReprocess: bo
             }
         }
 
-        const chunks = processor.chunkContent(content, filePath, version);
+        const chunks = processor.chunkContent(content, filePath);
 
         // Remove old chunks
         database.removeChunksForFile(filePath);
@@ -546,7 +540,7 @@ async function processFile(filePath: string, version: string, forceReprocess: bo
     }
 }
 
-async function performInitialSync(version: string, forceReprocess: boolean = false) {
+async function performInitialSync(forceReprocess: boolean = false) {
     if (!syncer || !database) return;
 
     const files = syncer.getSyncedFiles();
@@ -582,7 +576,7 @@ async function performInitialSync(version: string, forceReprocess: boolean = fal
         }
         
         console.log(`Processing ${i + 1}/${files.length}: ${filePath}`);
-        await processFile(filePath, version, forceReprocess);
+        await processFile(filePath, forceReprocess);
         processed++;
         // Update stats after each file during initial sync
         sendStats();

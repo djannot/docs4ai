@@ -5,7 +5,6 @@ import * as crypto from 'crypto';
 export interface DocumentChunk {
     chunkId: string;
     content: string;
-    version: string;
     section: string;
     headingHierarchy: string[];
     chunkIndex: number;
@@ -137,7 +136,7 @@ export class ContentProcessor {
         return text.split(/(\s+)/).filter(token => token.length > 0);
     }
 
-    chunkContent(content: string, filePath: string, version: string): DocumentChunk[] {
+    chunkContent(content: string, filePath: string): DocumentChunk[] {
         const chunks: DocumentChunk[] = [];
         const lines = content.split('\n');
         
@@ -168,7 +167,6 @@ export class ContentProcessor {
             return {
                 chunkId,
                 content: searchableText,
-                version,
                 section: hierarchy[hierarchy.length - 1] || 'Introduction',
                 headingHierarchy: hierarchy.filter(h => h),
                 chunkIndex: chunkCounter++,

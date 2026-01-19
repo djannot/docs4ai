@@ -626,10 +626,6 @@
                 <input type="text" id="extensions" value=".md,.txt,.html,.pdf,.doc,.docx" placeholder=".md,.txt,.html,.pdf,.doc,.docx">
             </div>
 
-            <div class="input-group">
-                <label for="version">Version:</label>
-                <input type="text" id="version" value="1.0.0" placeholder="1.0.0">
-            </div>
         </div>
 
         <div class="card">
@@ -792,7 +788,6 @@
             }
             
             document.getElementById('apiKey').value = settings.openAIApiKey || '';
-            document.getElementById('version').value = settings.version || '1.0.0';
             document.getElementById('extensions').value = settings.fileExtensions || '.md,.txt,.html,.pdf';
             document.getElementById('recursive').checked = settings.recursive !== false;
             
@@ -826,7 +821,6 @@
                 watchedFolder: document.getElementById('folderPath').textContent === 'No folder selected' ? '' : document.getElementById('folderPath').textContent,
                 databasePath: document.getElementById('databasePath').textContent === 'No database selected' ? '' : document.getElementById('databasePath').textContent,
                 openAIApiKey: document.getElementById('apiKey').value,
-                version: document.getElementById('version').value,
                 fileExtensions: document.getElementById('extensions').value,
                 recursive: document.getElementById('recursive').checked,
                 mcpServerPort: parseInt(document.getElementById('mcpPort').value) || 3333
@@ -913,7 +907,7 @@
         });
         
         
-        ['version', 'extensions', 'recursive'].forEach(id => {
+        ['extensions', 'recursive'].forEach(id => {
             document.getElementById(id).addEventListener('change', saveSettings);
         });
 

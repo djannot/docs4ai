@@ -18,11 +18,11 @@ export class DatabaseManager {
         
         // Prepare statements for insert/update (matching doc2vec's approach)
         this.insertStmt = this.db.prepare(`
-            INSERT INTO vec_items (embedding, version, heading_hierarchy, section, chunk_id, content, url, hash, chunk_index, total_chunks)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO vec_items (embedding, heading_hierarchy, section, chunk_id, content, url, hash, chunk_index, total_chunks)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         this.updateStmt = this.db.prepare(`
-            UPDATE vec_items SET embedding = ?, version = ?, heading_hierarchy = ?, section = ?, content = ?, url = ?, hash = ?, chunk_index = ?, total_chunks = ?
+            UPDATE vec_items SET embedding = ?, heading_hierarchy = ?, section = ?, content = ?, url = ?, hash = ?, chunk_index = ?, total_chunks = ?
             WHERE chunk_id = ?
         `);
         
@@ -50,7 +50,6 @@ export class DatabaseManager {
         this.db.exec(`
             CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
                 embedding FLOAT[3072],
-                version TEXT,
                 heading_hierarchy TEXT,
                 section TEXT,
                 chunk_id TEXT UNIQUE,
@@ -83,7 +82,6 @@ export class DatabaseManager {
         try {
             this.insertStmt.run(
                 embeddingData,
-                chunk.version,
                 headingHierarchyJson,
                 chunk.section,
                 chunk.chunkId,
@@ -99,7 +97,6 @@ export class DatabaseManager {
             if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('UNIQUE constraint failed')) {
                 this.updateStmt.run(
                     embeddingData,
-                    chunk.version,
                     headingHierarchyJson,
                     chunk.section,
                     chunk.content,
