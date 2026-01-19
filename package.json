@@ -12,7 +12,10 @@
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win",
-    "package:linux": "npm run build && electron-builder --linux"
+    "package:linux": "npm run build && electron-builder --linux",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "build": {
     "appId": "com.docs4ai.app",
@@ -28,15 +31,24 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "assets/icon.icns"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.ico"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets",
       "category": "Utility"
     },
@@ -55,14 +67,21 @@
     "@electron/rebuild": "^3.6.0",
     "@types/better-sqlite3": "^7.6.11",
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/node-fetch": "^2.6.13",
+    "@types/uuid": "^11.0.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
-    "typescript": "^5.6.3"
+    "jest": "^30.2.0",
+    "node-fetch": "^3.3.2",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.6.3",
+    "uuid": "^13.0.0"
   },
   "optionalDependencies": {
+    "mammoth": "^1.8.0",
     "pdf-parse": "^1.1.1",
-    "word-extractor": "^1.0.4",
-    "mammoth": "^1.8.0"
+    "word-extractor": "^1.0.4"
   }
 }
