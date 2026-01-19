@@ -1,0 +1,68 @@
+{
+  "name": "docs4ai",
+  "version": "1.0.0",
+  "description": "Cross-platform folder sync app with sqlite-vec for vector search",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "postinstall": "npx @electron/rebuild",
+    "start": "npm run build && electron .",
+    "dev": "tsc && electron .",
+    "rebuild": "npx @electron/rebuild",
+    "package": "npm run build && electron-builder",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.docsync.app",
+    "productName": "Docs4ai",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/index.html",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets",
+      "category": "Utility"
+    },
+    "icon": "assets/icon.png"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "chokidar": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "electron-store": "^8.2.0",
+    "express": "^4.21.0",
+    "openai": "^4.77.0",
+    "sqlite-vec": "^0.1.6"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.6.3"
+  },
+  "optionalDependencies": {
+    "pdf-parse": "^1.1.1",
+    "word-extractor": "^1.0.4",
+    "mammoth": "^1.8.0"
+  }
+}
