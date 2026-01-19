@@ -6,24 +6,39 @@ interface Stats {
     totalChunks: number;
 }
 
+interface ProfileStats extends Stats {
+    profileId: string;
+}
+
 contextBridge.exposeInMainWorld('api', {
-    getSettings: () => ipcRenderer.invoke('get-settings'),
-    saveSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('save-settings', settings),
+    getProfiles: () => ipcRenderer.invoke('get-profiles'),
+    getProfileSettings: (profileId: string) => ipcRenderer.invoke('get-profile-settings', profileId),
+    createProfile: (name: string) => ipcRenderer.invoke('create-profile', name),
+    deleteProfile: (profileId: string) => ipcRenderer.invoke('delete-profile', profileId),
+    updateProfile: (profileId: string, updates: Record<string, unknown>) => ipcRenderer.invoke('update-profile', profileId, updates),
+    setActiveProfile: (profileId: string) => ipcRenderer.invoke('set-active-profile', profileId),
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     selectDatabase: () => ipcRenderer.invoke('select-database'),
-    getStats: () => ipcRenderer.invoke('get-stats'),
-    getFiles: () => ipcRenderer.invoke('get-files'),
-    getChunks: (filePath: string) => ipcRenderer.invoke('get-chunks', filePath),
-    startWatching: () => ipcRenderer.invoke('start-watching'),
-    stopWatching: () => ipcRenderer.invoke('stop-watching'),
-    forceSync: () => ipcRenderer.invoke('force-sync'),
-    startMcpServer: () => ipcRenderer.invoke('start-mcp-server'),
-    stopMcpServer: () => ipcRenderer.invoke('stop-mcp-server'),
-    getMcpStatus: () => ipcRenderer.invoke('get-mcp-status'),
-    onStatsUpdate: (callback: (stats: Stats) => void) => {
-        ipcRenderer.on('stats-update', (_event: IpcRendererEvent, stats: Stats) => callback(stats));
+    getStats: (profileId: string) => ipcRenderer.invoke('get-stats', profileId),
+    getFiles: (profileId: string) => ipcRenderer.invoke('get-files', profileId),
+    getChunks: (profileId: string, filePath: string) => ipcRenderer.invoke('get-chunks', profileId, filePath),
+    startWatching: (profileId: string) => ipcRenderer.invoke('start-watching', profileId),
+    stopWatching: (profileId: string) => ipcRenderer.invoke('stop-watching', profileId),
+    forceSync: (profileId: string) => ipcRenderer.invoke('force-sync', profileId),
+    startMcpServer: (profileId: string) => ipcRenderer.invoke('start-mcp-server', profileId),
+    stopMcpServer: (profileId: string) => ipcRenderer.invoke('stop-mcp-server', profileId),
+    getMcpStatus: (profileId: string) => ipcRenderer.invoke('get-mcp-status', profileId),
+    updateMcpPort: (profileId: string, port: number) => ipcRenderer.invoke('update-mcp-port', profileId, port),
+    onStatsUpdate: (callback: (stats: ProfileStats) => void) => {
+        ipcRenderer.on('stats-update', (_event: IpcRendererEvent, stats: ProfileStats) => callback(stats));
     },
-    onApiKeyError: (callback: (message: string) => void) => {
-        ipcRenderer.on('api-key-error', (_event: IpcRendererEvent, message: string) => callback(message));
+    onStatsUpdateAll: (callback: (stats: ProfileStats[]) => void) => {
+        ipcRenderer.on('stats-update-all', (_event: IpcRendererEvent, stats: ProfileStats[]) => callback(stats));
+    },
+    onApiKeyError: (callback: (data: { profileId: string; message: string }) => void) => {
+        ipcRenderer.on('api-key-error', (_event: IpcRendererEvent, data: { profileId: string; message: string }) => callback(data));
+    },
+    onSwitchProfile: (callback: (profileId: string) => void) => {
+        ipcRenderer.on('switch-profile', (_event: IpcRendererEvent, profileId: string) => callback(profileId));
     }
 });

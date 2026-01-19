@@ -583,6 +583,136 @@
             border-radius: 4px;
             border: 1px solid #e5e5ea;
         }
+
+        /* Profile tabs styles */
+        .profile-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .profile-tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .profile-tabs::-webkit-scrollbar-thumb {
+            background: #d2d2d7;
+            border-radius: 2px;
+        }
+
+        .profile-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+            transition: all 0.2s;
+            position: relative;
+            user-select: none;
+        }
+
+        .profile-tab:hover {
+            background: #f5f5f7;
+            border-color: #0071e3;
+        }
+
+        .profile-tab.active {
+            background: #0071e3;
+            color: white;
+            border-color: #0071e3;
+        }
+
+        .profile-tab .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #86868b;
+        }
+
+        .profile-tab.active .status-indicator {
+            background: white;
+        }
+
+        .profile-tab.syncing .status-indicator {
+            background: #34c759;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .profile-tab-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .profile-tab-close {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            opacity: 0.6;
+            transition: all 0.2s;
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .profile-tab:hover .profile-tab-close {
+            opacity: 1;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .profile-tab.active .profile-tab-close {
+            opacity: 0.8;
+        }
+
+        .profile-tab.active:hover .profile-tab-close {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .profile-tab-add {
+            padding: 8px 12px;
+            background: #e5e5ea;
+            border: 1px dashed #86868b;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            color: #86868b;
+            transition: all 0.2s;
+            min-width: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .profile-tab-add:hover {
+            background: #d2d2d7;
+            border-color: #0071e3;
+            color: #0071e3;
+        }
+
+        .profile-content {
+            display: none;
+        }
+
+        .profile-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -595,55 +725,16 @@
             </div>
         </header>
 
-        <div class="card">
-            <div class="card-title">📁 Watch Folder</div>
-            <div class="input-row">
-                <div class="path-display" id="folderPath">No folder selected</div>
-                <button class="btn-secondary" onclick="selectFolder()">Select...</button>
-            </div>
+        <!-- Profile Tabs -->
+        <div class="profile-tabs" id="profileTabs"></div>
+
+        <!-- Profile Content Container -->
+        <div id="profileContentContainer">
+            <!-- Content will be dynamically generated for each profile -->
         </div>
 
-        <div class="card">
-            <div class="card-title">💾 Database</div>
-            <div class="input-row">
-                <div class="path-display" id="databasePath">No database selected</div>
-                <button class="btn-secondary" onclick="selectDatabase()">Select...</button>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">⚙️ Settings</div>
-            
-            <div class="input-group">
-                <div class="checkbox-group">
-                    <input type="checkbox" id="recursive" checked>
-                    <label for="recursive">Watch subdirectories</label>
-                </div>
-            </div>
-
-            <div class="input-group">
-                <label for="extensions">File extensions:</label>
-                <input type="text" id="extensions" value=".md,.txt,.html,.pdf,.doc,.docx" placeholder=".md,.txt,.html,.pdf,.doc,.docx">
-            </div>
-
-        </div>
-
-        <div class="card">
-            <div class="card-title">🧠 Embeddings (OpenAI)</div>
-            
-
-            <div class="input-group">
-                <label for="apiKey">API Key:</label>
-                <input type="password" id="apiKey" placeholder="sk-...">
-            </div>
-
-            <div class="info">Uses text-embedding-3-large (3072 dimensions)</div>
-            <div class="warning" id="apiKeyWarning" style="display: none;">
-                API key required for embeddings
-            </div>
-        </div>
-
-        <div class="card">
+        <!-- MCP Server Card (shared across profiles) -->
+        <div class="card" style="margin-top: 16px;">
             <div class="card-title">🌐 MCP Server</div>
             
             <div class="input-group">
@@ -660,24 +751,6 @@
             
             <button class="btn-secondary" id="mcpConfigureBtn" style="display: none; width: 100%; margin-top: 8px;" onclick="openMcpConfig()">Configure Clients</button>
         </div>
-
-        <div class="card">
-            <div class="card-title">📊 Statistics</div>
-            
-            <div class="stat-item">
-                <span class="stat-label">Files tracked</span>
-                <span class="stat-value" id="trackedFiles">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Total chunks</span>
-                <span class="stat-value" id="totalChunks">0</span>
-            </div>
-            <button class="btn-secondary" style="width: 100%; margin-top: 12px;" onclick="openBrowser()">Browse Database</button>
-        </div>
-
-        <div class="actions">
-            <button class="btn-primary" id="startBtn" onclick="toggleWatching()">Start Watching</button>
-        </div>
     </div>
 
     <!-- Browse Database Modal -->
@@ -689,6 +762,24 @@
             </div>
             <div class="modal-body" id="modalBody">
                 <div class="empty-state">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Dialog Modal -->
+    <div class="modal-overlay" id="inputDialogModal">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="inputDialogTitle">Enter Name</h2>
+                <button class="modal-close" onclick="closeInputDialog()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="inputDialogInput" style="display: block; margin-bottom: 8px; font-size: 14px;" id="inputDialogMessage">Name:</label>
+                <input type="text" id="inputDialogInput" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;" autofocus>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
+                    <button class="btn-secondary" onclick="closeInputDialog()">Cancel</button>
+                    <button class="btn-primary" onclick="confirmInputDialog()">OK</button>
+                </div>
             </div>
         </div>
     </div>
@@ -771,190 +862,647 @@
     </div>
 
     <script>
-        let isSyncing = false;
+        let profiles = [];
+        let activeProfileId = null;
+        let profileStats = new Map();
+        let mcpRunning = false;
 
-        // Load settings on startup
-        async function loadSettings() {
-            const settings = await window.api.getSettings();
+        // Load profiles on startup
+        async function loadProfiles() {
+            const data = await window.api.getProfiles();
+            profiles = data.profiles || [];
+            activeProfileId = data.activeProfileId;
             
-            if (settings.watchedFolder) {
-                document.getElementById('folderPath').textContent = settings.watchedFolder;
-                document.getElementById('folderPath').classList.add('has-value');
+            // If no profiles exist, create a default one
+            if (profiles.length === 0) {
+                const defaultProfile = await window.api.createProfile('Default Profile');
+                profiles = [defaultProfile];
+                activeProfileId = defaultProfile.id;
+            } else if (!activeProfileId && profiles.length > 0) {
+                activeProfileId = profiles[0].id;
+                await window.api.setActiveProfile(activeProfileId);
             }
             
-            if (settings.databasePath) {
-                document.getElementById('databasePath').textContent = settings.databasePath;
-                document.getElementById('databasePath').classList.add('has-value');
+            renderTabs();
+            await renderActiveProfile();
+            
+            // Get initial stats for all profiles
+            for (const profile of profiles) {
+                const stats = await window.api.getStats(profile.id);
+                profileStats.set(profile.id, stats);
             }
-            
-            document.getElementById('apiKey').value = settings.openAIApiKey || '';
-            document.getElementById('extensions').value = settings.fileExtensions || '.md,.txt,.html,.pdf';
-            document.getElementById('recursive').checked = settings.recursive !== false;
-            
-            updateApiKeyWarning();
-            
-            // Get initial stats
-            const stats = await window.api.getStats();
-            updateStats(stats);
+            updateOverallStatus();
         }
 
-        async function selectFolder() {
-            const folder = await window.api.selectFolder();
-            if (folder) {
-                document.getElementById('folderPath').textContent = folder;
-                document.getElementById('folderPath').classList.add('has-value');
-                await saveSettings();
+        function renderTabs() {
+            const tabsContainer = document.getElementById('profileTabs');
+            if (!tabsContainer) {
+                console.error('profileTabs container not found');
+                return;
             }
+            tabsContainer.innerHTML = '';
+            
+            for (const profile of profiles) {
+                const tab = document.createElement('div');
+                tab.className = `profile-tab ${profile.id === activeProfileId ? 'active' : ''}`;
+                const stats = profileStats.get(profile.id) || { isSyncing: false };
+                if (stats.isSyncing) {
+                    tab.classList.add('syncing');
+                }
+                
+                tab.innerHTML = `
+                    <div class="status-indicator"></div>
+                    <span class="profile-tab-name" title="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}</span>
+                    <span class="profile-tab-close" onclick="deleteProfile('${profile.id}', event)">&times;</span>
+                `;
+                
+                tab.onclick = (e) => {
+                    // Only prevent switching if clicking the close button
+                    if (!e.target.classList.contains('profile-tab-close')) {
+                        switchProfile(profile.id);
+                    }
+                };
+                
+                tabsContainer.appendChild(tab);
+            }
+            
+            // Add button
+            const addBtn = document.createElement('div');
+            addBtn.className = 'profile-tab-add';
+            addBtn.innerHTML = '+';
+            addBtn.style.cursor = 'pointer';
+            addBtn.title = 'Add new profile';
+            addBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('Add button clicked');
+                await createNewProfile();
+            });
+            tabsContainer.appendChild(addBtn);
+            console.log('Tabs rendered, add button created');
         }
 
-        async function selectDatabase() {
-            const dbPath = await window.api.selectDatabase();
-            if (dbPath) {
-                document.getElementById('databasePath').textContent = dbPath;
-                document.getElementById('databasePath').classList.add('has-value');
-                await saveSettings();
-            }
-        }
+        // Input dialog functions
+        let inputDialogResolve = null;
+        let inputDialogReject = null;
 
-        async function saveSettings() {
-            await window.api.saveSettings({
-                watchedFolder: document.getElementById('folderPath').textContent === 'No folder selected' ? '' : document.getElementById('folderPath').textContent,
-                databasePath: document.getElementById('databasePath').textContent === 'No database selected' ? '' : document.getElementById('databasePath').textContent,
-                openAIApiKey: document.getElementById('apiKey').value,
-                fileExtensions: document.getElementById('extensions').value,
-                recursive: document.getElementById('recursive').checked,
-                mcpServerPort: parseInt(document.getElementById('mcpPort').value) || 3333
+        function showInputDialog(title, message, defaultValue = '') {
+            return new Promise((resolve, reject) => {
+                inputDialogResolve = resolve;
+                inputDialogReject = reject;
+                
+                document.getElementById('inputDialogTitle').textContent = title;
+                document.getElementById('inputDialogMessage').textContent = message;
+                const input = document.getElementById('inputDialogInput');
+                input.value = defaultValue;
+                document.getElementById('inputDialogModal').classList.add('active');
+                
+                // Handle Enter key - remove old handler first
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        input.removeEventListener('keydown', handleKeyDown);
+                        confirmInputDialog();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        input.removeEventListener('keydown', handleKeyDown);
+                        closeInputDialog();
+                    }
+                };
+                
+                // Remove any existing handler and add new one
+                input.onkeydown = null;
+                input.addEventListener('keydown', handleKeyDown);
+                
+                // Focus and select text
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 100);
             });
         }
 
-        async function toggleWatching() {
-            const btn = document.getElementById('startBtn');
+        function confirmInputDialog() {
+            const input = document.getElementById('inputDialogInput');
+            const value = input.value.trim();
+            
+            // Resolve the promise first
+            if (inputDialogResolve) {
+                const resolve = inputDialogResolve;
+                inputDialogResolve = null;
+                inputDialogReject = null;
+                // Close modal
+                document.getElementById('inputDialogModal').classList.remove('active');
+                // Resolve with the value
+                resolve(value);
+            }
+        }
+
+        function closeInputDialog() {
+            // Reject the promise if it exists (user cancelled)
+            if (inputDialogReject) {
+                const reject = inputDialogReject;
+                inputDialogResolve = null;
+                inputDialogReject = null;
+                document.getElementById('inputDialogModal').classList.remove('active');
+                reject(null);
+            } else {
+                // Just close if no promise pending
+                document.getElementById('inputDialogModal').classList.remove('active');
+            }
+        }
+
+        async function createNewProfile() {
+            try {
+                console.log('createNewProfile called');
+                const name = await showInputDialog('New Profile', 'Enter profile name:', `Profile ${profiles.length + 1}`);
+                console.log('User entered name:', name);
+                
+                if (!name) {
+                    console.log('User cancelled or no name provided');
+                    return;
+                }
+                
+                if (!name.trim()) {
+                    alert('Profile name cannot be empty');
+                    return;
+                }
+                
+                console.log('Calling window.api.createProfile with name:', name.trim());
+                
+                try {
+                    const newProfile = await window.api.createProfile(name.trim());
+                    console.log('Received profile from API:', newProfile);
+                    
+                    if (!newProfile || !newProfile.id) {
+                        console.error('Invalid profile returned:', newProfile);
+                        alert('Failed to create profile: Invalid response from server');
+                        return;
+                    }
+                    
+                    console.log('Adding profile to local array');
+                    profiles.push(newProfile);
+                    activeProfileId = newProfile.id;
+                    
+                    console.log('Setting active profile:', activeProfileId);
+                    await window.api.setActiveProfile(activeProfileId);
+                    
+                    profileStats.set(newProfile.id, { isSyncing: false, trackedFiles: 0, totalChunks: 0 });
+                    
+                    console.log('Rendering tabs and profile');
+                renderTabs();
+                await renderActiveProfile();
+                console.log('Profile created successfully:', newProfile.name);
+                } catch (apiError) {
+                    console.error('API error creating profile:', apiError);
+                    alert('Error creating profile: ' + (apiError.message || apiError));
+                }
+            } catch (error) {
+                console.error('Error in createNewProfile:', error);
+                alert('Error creating profile: ' + (error.message || error));
+            }
+        }
+
+
+        async function deleteProfile(profileId, event) {
+            event.stopPropagation();
+            
+            if (profiles.length === 1) {
+                alert('Cannot delete the last profile. Please create another profile first.');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this profile?')) {
+                return;
+            }
+            
+            await window.api.deleteProfile(profileId);
+            profiles = profiles.filter(p => p.id !== profileId);
+            profileStats.delete(profileId);
+            
+            if (activeProfileId === profileId) {
+                activeProfileId = profiles.length > 0 ? profiles[0].id : null;
+                if (activeProfileId) {
+                    await window.api.setActiveProfile(activeProfileId);
+                }
+            }
+            
+            renderTabs();
+            await renderActiveProfile();
+        }
+
+        async function switchProfile(profileId) {
+            activeProfileId = profileId;
+            await window.api.setActiveProfile(profileId);
+            renderTabs();
+            await renderActiveProfile();
+        }
+
+        async function renderActiveProfile() {
+            const container = document.getElementById('profileContentContainer');
+            const profile = profiles.find(p => p.id === activeProfileId);
+            
+            if (!profile) {
+                container.innerHTML = '<div class="empty-state">No profile selected</div>';
+                return;
+            }
+            
+            const stats = profileStats.get(profile.id) || { isSyncing: false, trackedFiles: 0, totalChunks: 0 };
+            
+            container.innerHTML = `
+                <div class="profile-content active" data-profile-id="${profile.id}">
+                    <div class="card">
+                        <div class="card-title">👤 Profile Name</div>
+                        <div class="input-group">
+                            <input type="text" id="profileName-${profile.id}" value="${escapeHtml(profile.name)}" placeholder="Profile name" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">📁 Watch Folder</div>
+                        <div class="input-row">
+                            <div class="path-display ${profile.watchedFolder ? 'has-value' : ''}" id="folderPath-${profile.id}">${profile.watchedFolder || 'No folder selected'}</div>
+                            <button class="btn-secondary" id="selectFolderBtn-${profile.id}">Select...</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">💾 Database</div>
+                        <div class="input-row">
+                            <div class="path-display ${profile.databasePath ? 'has-value' : ''}" id="databasePath-${profile.id}">${profile.databasePath || 'No database selected'}</div>
+                            <button class="btn-secondary" id="selectDatabaseBtn-${profile.id}">Select...</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">⚙️ Settings</div>
+                        
+                        <div class="input-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="recursive-${profile.id}" ${profile.recursive ? 'checked' : ''}>
+                                <label for="recursive-${profile.id}">Watch subdirectories</label>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="extensions-${profile.id}">File extensions:</label>
+                            <input type="text" id="extensions-${profile.id}" value="${escapeHtml(profile.fileExtensions)}" placeholder=".md,.txt,.html,.pdf,.doc,.docx">
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">🧠 Embeddings (OpenAI)</div>
+                        
+                        <div class="input-group">
+                            <label for="apiKey-${profile.id}">API Key:</label>
+                            <input type="password" id="apiKey-${profile.id}" value="${escapeHtml(profile.openAIApiKey || '')}" placeholder="sk-...">
+                        </div>
+
+                        <div class="info">Uses text-embedding-3-large (3072 dimensions)</div>
+                        <div class="warning" id="apiKeyWarning-${profile.id}" style="display: none;">
+                            API key required for embeddings
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">📊 Statistics</div>
+                        
+                        <div class="stat-item">
+                            <span class="stat-label">Files tracked</span>
+                            <span class="stat-value" id="trackedFiles-${profile.id}">${stats.trackedFiles || 0}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total chunks</span>
+                            <span class="stat-value" id="totalChunks-${profile.id}">${stats.totalChunks || 0}</span>
+                        </div>
+                        <button class="btn-secondary" style="width: 100%; margin-top: 12px;" id="browseDbBtn-${profile.id}">Browse Database</button>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn-primary ${stats.isSyncing ? 'btn-danger' : ''}" id="startBtn-${profile.id}">${stats.isSyncing ? 'Stop Sync' : 'Start Syncing'}</button>
+                    </div>
+                </div>
+            `;
+            
+            // Setup event listeners for this profile
+            setupProfileListeners(profile.id);
+            updateApiKeyWarning(profile.id);
+            
+            // Load MCP status for this profile
+            if (activeProfileId === profile.id) {
+                await loadMcpStatus();
+            }
+        }
+
+        function setupProfileListeners(profileId) {
+            const profileNameInput = document.getElementById(`profileName-${profileId}`);
+            const apiKeyInput = document.getElementById(`apiKey-${profileId}`);
+            const extensionsInput = document.getElementById(`extensions-${profileId}`);
+            const recursiveInput = document.getElementById(`recursive-${profileId}`);
+            const selectFolderBtn = document.getElementById(`selectFolderBtn-${profileId}`);
+            const selectDatabaseBtn = document.getElementById(`selectDatabaseBtn-${profileId}`);
+            const browseDbBtn = document.getElementById(`browseDbBtn-${profileId}`);
+            const startBtn = document.getElementById(`startBtn-${profileId}`);
+            
+            if (profileNameInput) {
+                // Save on blur (when user finishes editing)
+                profileNameInput.addEventListener('blur', async () => {
+                    const newName = profileNameInput.value.trim();
+                    if (newName && newName !== '') {
+                        const profile = profiles.find(p => p.id === profileId);
+                        if (profile && profile.name !== newName) {
+                            await window.api.updateProfile(profileId, { name: newName });
+                            profile.name = newName;
+                            renderTabs(); // Update tab name
+                        }
+                    } else {
+                        // Restore original name if empty
+                        const profile = profiles.find(p => p.id === profileId);
+                        if (profile) {
+                            profileNameInput.value = profile.name;
+                        }
+                    }
+                });
+                
+                // Also save on Enter key
+                profileNameInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        profileNameInput.blur();
+                    }
+                });
+            }
+            
+            if (apiKeyInput) {
+                apiKeyInput.addEventListener('input', () => {
+                    apiKeyInput.classList.remove('error');
+                    const warning = document.getElementById(`apiKeyWarning-${profileId}`);
+                    if (warning) {
+                        warning.classList.remove('error');
+                        warning.textContent = 'API key required for embeddings';
+                    }
+                    updateApiKeyWarning(profileId);
+                    saveProfileSettings(profileId);
+                });
+            }
+            
+            if (extensionsInput) {
+                extensionsInput.addEventListener('change', () => saveProfileSettings(profileId));
+            }
+            
+            if (recursiveInput) {
+                recursiveInput.addEventListener('change', () => saveProfileSettings(profileId));
+            }
+            
+            if (selectFolderBtn) {
+                selectFolderBtn.addEventListener('click', () => selectFolder(profileId));
+            }
+            
+            if (selectDatabaseBtn) {
+                selectDatabaseBtn.addEventListener('click', () => selectDatabase(profileId));
+            }
+            
+            if (browseDbBtn) {
+                browseDbBtn.addEventListener('click', () => openBrowser(profileId));
+            }
+            
+            if (startBtn) {
+                startBtn.addEventListener('click', () => toggleWatching(profileId));
+            }
+        }
+
+        async function selectFolder(profileId) {
+            const folder = await window.api.selectFolder();
+            if (folder) {
+                document.getElementById(`folderPath-${profileId}`).textContent = folder;
+                document.getElementById(`folderPath-${profileId}`).classList.add('has-value');
+                await window.api.updateProfile(profileId, { watchedFolder: folder });
+            }
+        }
+
+        async function selectDatabase(profileId) {
+            const dbPath = await window.api.selectDatabase();
+            if (dbPath) {
+                document.getElementById(`databasePath-${profileId}`).textContent = dbPath;
+                document.getElementById(`databasePath-${profileId}`).classList.add('has-value');
+                await window.api.updateProfile(profileId, { databasePath: dbPath });
+            }
+        }
+
+        async function saveProfileSettings(profileId) {
+            const profile = profiles.find(p => p.id === profileId);
+            if (!profile) return;
+            
+            const updates = {
+                watchedFolder: document.getElementById(`folderPath-${profileId}`).textContent === 'No folder selected' ? '' : document.getElementById(`folderPath-${profileId}`).textContent,
+                databasePath: document.getElementById(`databasePath-${profileId}`).textContent === 'No database selected' ? '' : document.getElementById(`databasePath-${profileId}`).textContent,
+                openAIApiKey: document.getElementById(`apiKey-${profileId}`).value,
+                fileExtensions: document.getElementById(`extensions-${profileId}`).value,
+                recursive: document.getElementById(`recursive-${profileId}`).checked
+            };
+            
+            await window.api.updateProfile(profileId, updates);
+            
+            // Update local profile data
+            Object.assign(profile, updates);
+        }
+
+        async function toggleWatching(profileId) {
+            const btn = document.getElementById(`startBtn-${profileId}`);
             const originalText = btn.textContent;
             
-            // Immediately disable button and show loading state
             btn.disabled = true;
-            btn.textContent = isSyncing ? 'Stopping...' : 'Syncing...';
+            const stats = profileStats.get(profileId) || { isSyncing: false };
+            btn.textContent = stats.isSyncing ? 'Stopping...' : 'Syncing...';
             
             try {
-                await saveSettings();
+                await saveProfileSettings(profileId);
                 
-                if (isSyncing) {
-                    await window.api.stopWatching();
+                if (stats.isSyncing) {
+                    await window.api.stopWatching(profileId);
                 } else {
-                    const result = await window.api.startWatching();
+                    const result = await window.api.startWatching(profileId);
                     if (!result.success) {
                         alert('Error: ' + result.error);
-                        // Restore button state on error
                         btn.disabled = false;
                         btn.textContent = originalText;
-                        updateApiKeyWarning();
+                        updateApiKeyWarning(profileId);
                         return;
                     }
                 }
             } catch (error) {
-                // Restore button state on error
                 btn.disabled = false;
                 btn.textContent = originalText;
-                updateApiKeyWarning();
+                updateApiKeyWarning(profileId);
                 alert('Error: ' + error.message);
             }
         }
 
         function updateStats(stats) {
-            isSyncing = stats.isSyncing;
+            profileStats.set(stats.profileId, stats);
             
-            const btn = document.getElementById('startBtn');
-            document.getElementById('statusDot').classList.toggle('active', isSyncing);
-            document.getElementById('statusText').textContent = isSyncing ? 'Syncing...' : 'Not syncing';
-            btn.textContent = isSyncing ? 'Stop Sync' : 'Start Sync';
-            btn.className = isSyncing ? 'btn-danger' : 'btn-primary';
-            btn.disabled = false; // Re-enable button when we receive stats
+            if (stats.profileId === activeProfileId) {
+                const btn = document.getElementById(`startBtn-${stats.profileId}`);
+                if (btn) {
+                    document.getElementById(`statusDot`).classList.toggle('active', stats.isSyncing);
+                    document.getElementById(`statusText`).textContent = stats.isSyncing ? 'Syncing...' : 'Not syncing';
+                    btn.textContent = stats.isSyncing ? 'Stop Sync' : 'Start Syncing';
+                    btn.className = stats.isSyncing ? 'btn-danger' : 'btn-primary';
+                    btn.disabled = false;
+                    
+                    document.getElementById(`trackedFiles-${stats.profileId}`).textContent = stats.trackedFiles;
+                    document.getElementById(`totalChunks-${stats.profileId}`).textContent = stats.totalChunks;
+                }
+            }
             
-            document.getElementById('trackedFiles').textContent = stats.trackedFiles;
-            document.getElementById('totalChunks').textContent = stats.totalChunks;
-            
-            // Update button disabled state based on API key (may disable if no key)
-            updateApiKeyWarning();
+            // Update tab status
+            renderTabs();
+            updateOverallStatus();
+            updateApiKeyWarning(stats.profileId);
         }
 
-        function updateApiKeyWarning() {
-            const apiKey = document.getElementById('apiKey').value;
-            const hasApiKey = apiKey && apiKey.trim().length > 0;
-            document.getElementById('apiKeyWarning').style.display = !hasApiKey ? 'block' : 'none';
+        function updateStatsAll(allStats) {
+            for (const stats of allStats) {
+                profileStats.set(stats.profileId, stats);
+            }
+            renderTabs();
+            updateOverallStatus();
             
-            // Disable start button if no API key (unless already watching)
-            const startBtn = document.getElementById('startBtn');
-            if (!isSyncing) {
-                startBtn.disabled = !hasApiKey;
-                if (!hasApiKey) {
-                    startBtn.title = 'OpenAI API key required';
-                } else {
-                    startBtn.title = '';
+            if (activeProfileId) {
+                const stats = profileStats.get(activeProfileId);
+                if (stats) {
+                    updateStats(stats);
                 }
             }
         }
 
-        // Event listeners
-        document.getElementById('apiKey').addEventListener('input', () => {
-            // Clear error state when user types
-            document.getElementById('apiKey').classList.remove('error');
-            const warning = document.getElementById('apiKeyWarning');
-            warning.classList.remove('error');
-            warning.textContent = 'API key required for embeddings';
+        function updateOverallStatus() {
+            let syncingCount = 0;
+            let totalFiles = 0;
+            let totalChunks = 0;
             
-            updateApiKeyWarning();
-            saveSettings();
-        });
-        
-        
-        ['extensions', 'recursive'].forEach(id => {
-            document.getElementById(id).addEventListener('change', saveSettings);
-        });
+            for (const stats of profileStats.values()) {
+                if (stats.isSyncing) syncingCount++;
+                totalFiles += stats.trackedFiles || 0;
+                totalChunks += stats.totalChunks || 0;
+            }
+            
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (syncingCount > 0) {
+                statusDot.classList.add('active');
+                statusText.textContent = `${syncingCount} profile(s) syncing`;
+            } else {
+                statusDot.classList.remove('active');
+                statusText.textContent = 'Not syncing';
+            }
+        }
+
+        function updateApiKeyWarning(profileId) {
+            if (profileId !== activeProfileId) return;
+            
+            const apiKey = document.getElementById(`apiKey-${profileId}`)?.value || '';
+            const hasApiKey = apiKey && apiKey.trim().length > 0;
+            const warning = document.getElementById(`apiKeyWarning-${profileId}`);
+            
+            if (warning) {
+                warning.style.display = !hasApiKey ? 'block' : 'none';
+            }
+            
+            const startBtn = document.getElementById(`startBtn-${profileId}`);
+            if (startBtn) {
+                const stats = profileStats.get(profileId) || { isSyncing: false };
+                if (!stats.isSyncing) {
+                    startBtn.disabled = !hasApiKey;
+                    if (!hasApiKey) {
+                        startBtn.title = 'OpenAI API key required';
+                    } else {
+                        startBtn.title = '';
+                    }
+                }
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         // Listen for stats updates from main process
         window.api.onStatsUpdate(updateStats);
+        window.api.onStatsUpdateAll(updateStatsAll);
 
         // Listen for API key errors
-        window.api.onApiKeyError((message) => {
-            // Clear the API key field and show error
-            document.getElementById('apiKey').value = '';
-            document.getElementById('apiKey').classList.add('error');
+        window.api.onApiKeyError((data) => {
+            const { profileId, message } = data;
             
-            // Update warning to show the error message
-            const warning = document.getElementById('apiKeyWarning');
-            warning.textContent = message;
-            warning.style.display = 'block';
-            warning.classList.add('error');
+            if (profileId === activeProfileId) {
+                const apiKeyInput = document.getElementById(`apiKey-${profileId}`);
+                if (apiKeyInput) {
+                    apiKeyInput.value = '';
+                    apiKeyInput.classList.add('error');
+                    
+                    const warning = document.getElementById(`apiKeyWarning-${profileId}`);
+                    if (warning) {
+                        warning.textContent = message;
+                        warning.style.display = 'block';
+                        warning.classList.add('error');
+                    }
+                    
+                    updateApiKeyWarning(profileId);
+                }
+            }
             
-            // Update button state
-            updateApiKeyWarning();
-            
-            // Show alert
-            alert('API Key Error: ' + message);
+            alert(`API Key Error (${profiles.find(p => p.id === profileId)?.name || 'Profile'}): ${message}`);
+        });
+
+        // Listen for profile switch from tray
+        window.api.onSwitchProfile(async (profileId) => {
+            await switchProfile(profileId);
         });
 
         // MCP Server functions
-        let mcpRunning = false;
-
         async function toggleMcpServer() {
-            if (mcpRunning) {
-                const result = await window.api.stopMcpServer();
+            if (!activeProfileId) {
+                alert('No active profile selected');
+                return;
+            }
+            
+            // Get current status first
+            const currentStatus = await window.api.getMcpStatus(activeProfileId);
+            
+            if (currentStatus.running) {
+                const result = await window.api.stopMcpServer(activeProfileId);
                 if (result.success) {
                     updateMcpStatus(false);
                 } else {
                     alert('Error stopping MCP server: ' + result.error);
+                    // Reload status to ensure UI is correct
+                    await loadMcpStatus();
                 }
             } else {
-                // Save port first
-                await saveSettings();
-                const result = await window.api.startMcpServer();
+                const result = await window.api.startMcpServer(activeProfileId);
                 if (result.success) {
                     updateMcpStatus(true, result.port);
                 } else {
                     alert('Error starting MCP server: ' + result.error);
+                    // Reload status to ensure UI is correct
+                    const status = await window.api.getMcpStatus(activeProfileId);
+                    updateMcpStatus(status.running, status.port);
+                    // Force enable port input - server definitely didn't start if we got an error
+                    const portInput = document.getElementById('mcpPort');
+                    if (portInput) {
+                        portInput.disabled = false;
+                        portInput.removeAttribute('disabled');
+                    }
                 }
             }
         }
+
 
         function updateMcpStatus(running, port = null) {
             mcpRunning = running;
@@ -966,22 +1514,76 @@
             if (running) {
                 btn.textContent = 'Stop Server';
                 btn.className = 'btn-danger';
-                status.innerHTML = `<span style="color: #34c759;">● Running on port ${port || portInput.value}</span>`;
+                status.innerHTML = `<span style="color: #34c759;">● Running on port ${port || (portInput ? portInput.value : '')}</span>`;
                 configureBtn.style.display = 'block';
-                portInput.disabled = true;
+                if (portInput) {
+                    portInput.disabled = true;
+                }
             } else {
                 btn.textContent = 'Start Server';
                 btn.className = 'btn-secondary';
                 status.textContent = 'Server stopped';
                 configureBtn.style.display = 'none';
-                portInput.disabled = false;
+                // Always enable port input when server is not running
+                if (portInput) {
+                    portInput.disabled = false;
+                    // Force enable in case it was disabled by CSS or other code
+                    portInput.removeAttribute('disabled');
+                }
             }
         }
 
         async function loadMcpStatus() {
-            const status = await window.api.getMcpStatus();
-            const settings = await window.api.getSettings();
-            document.getElementById('mcpPort').value = settings.mcpServerPort || 3333;
+            if (!activeProfileId) return;
+            
+            const status = await window.api.getMcpStatus(activeProfileId);
+            const profile = profiles.find(p => p.id === activeProfileId);
+            const mcpPortInput = document.getElementById('mcpPort');
+            
+            if (mcpPortInput && profile) {
+                // Store the current value
+                const currentValue = mcpPortInput.value;
+                const wasDisabled = mcpPortInput.disabled;
+                
+                // Remove old listener if exists and add new one
+                const newInput = mcpPortInput.cloneNode(true);
+                mcpPortInput.parentNode.replaceChild(newInput, mcpPortInput);
+                const portInput = document.getElementById('mcpPort');
+                
+                if (portInput) {
+                    // Set value and disabled state based on CURRENT profile's status
+                    portInput.value = profile.mcpServerPort || 3333;
+                    portInput.disabled = status.running; // Enable/disable based on THIS profile's server status
+                    
+                    portInput.addEventListener('change', async () => {
+                        // Only save the port if server is not running - no validation here
+                        // Validation will happen when user tries to start the server
+                        const currentStatus = await window.api.getMcpStatus(activeProfileId);
+                        if (!currentStatus.running && activeProfileId) {
+                            const port = parseInt(portInput.value) || 3333;
+                            // Just save the port value - no validation, no errors
+                            // Port conflicts will be checked when starting the server
+                            const result = await window.api.updateMcpPort(activeProfileId, port);
+                            if (result.success) {
+                                // Update local profile data
+                                const currentProfile = profiles.find(p => p.id === activeProfileId);
+                                if (currentProfile) {
+                                    currentProfile.mcpServerPort = port;
+                                }
+                            }
+                            // Don't show errors here - allow user to set any port
+                            // Errors will be shown when they try to start the server
+                        } else if (currentStatus.running) {
+                            // Server is running, restore port value
+                            const currentProfile = profiles.find(p => p.id === activeProfileId);
+                            if (currentProfile) {
+                                portInput.value = currentProfile.mcpServerPort || 3333;
+                            }
+                            alert('Cannot change port while server is running. Please stop the server first.');
+                        }
+                    });
+                }
+            }
             updateMcpStatus(status.running, status.port);
         }
 
@@ -1078,8 +1680,10 @@
         let selectedFilePath = null;
         let savedTreeHtml = null; // Save tree state when viewing chunks
         let savedTreeScroll = 0;
+        let browserProfileId = null;
 
-        async function openBrowser() {
+        async function openBrowser(profileId) {
+            browserProfileId = profileId || activeProfileId;
             document.getElementById('browserModal').classList.add('active');
             currentView = 'files';
             savedTreeHtml = null; // Reset saved state when opening
@@ -1093,7 +1697,9 @@
 
         async function showFileList(forceRebuild = false) {
             currentView = 'files';
-            document.getElementById('modalTitle').textContent = '📂 Browse Database';
+            const profileId = browserProfileId || activeProfileId;
+            const profile = profiles.find(p => p.id === profileId);
+            document.getElementById('modalTitle').textContent = `📂 Browse Database - ${profile?.name || 'Profile'}`;
             const body = document.getElementById('modalBody');
             
             // If we have saved tree HTML, restore it instead of rebuilding
@@ -1103,8 +1709,7 @@
                 return;
             }
             
-            const files = await window.api.getFiles();
-            const settings = await window.api.getSettings();
+            const files = await window.api.getFiles(profileId);
             
             if (files.length === 0) {
                 body.innerHTML = '<div class="empty-state">No files in database yet.<br>Start syncing a folder to add files.</div>';
@@ -1112,7 +1717,7 @@
             }
             
             // Use the configured watched folder as base path
-            const basePath = settings.watchedFolder || findCommonBasePath(files.map(f => f.path));
+            const basePath = profile?.watchedFolder || findCommonBasePath(files.map(f => f.path));
             
             // Build tree structure relative to base path
             const tree = buildFileTree(files, basePath);
@@ -1265,6 +1870,7 @@
 
         async function showChunks(filePath) {
             const body = document.getElementById('modalBody');
+            const profileId = browserProfileId || activeProfileId;
             
             // Save current tree state before switching to chunks
             savedTreeHtml = body.innerHTML;
@@ -1275,7 +1881,7 @@
             const fileName = filePath.split('/').pop();
             document.getElementById('modalTitle').textContent = `📄 ${fileName}`;
             
-            const chunks = await window.api.getChunks(filePath);
+            const chunks = await window.api.getChunks(profileId, filePath);
             
             let html = '<button class="back-btn" onclick="showFileList()">← Back to files</button>';
             
@@ -1325,8 +1931,7 @@
         });
 
         // Initialize
-        loadSettings();
-        loadMcpStatus();
+        loadProfiles();
     </script>
 </body>
 </html>
