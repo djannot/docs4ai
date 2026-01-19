@@ -15,7 +15,7 @@
     "package:linux": "npm run build && electron-builder --linux"
   },
   "build": {
-    "appId": "com.docsync.app",
+    "appId": "com.docs4ai.app",
     "productName": "Docs4ai",
     "directories": {
       "output": "release"

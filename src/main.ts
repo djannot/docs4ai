@@ -310,7 +310,7 @@ function setupIpcHandlers() {
     // Select database file
     ipcMain.handle('select-database', async () => {
         const result = await dialog.showSaveDialog(mainWindow!, {
-            defaultPath: 'docsync.db',
+            defaultPath: 'docs4ai.db',
             filters: [{ name: 'SQLite Database', extensions: ['db'] }]
         });
         
