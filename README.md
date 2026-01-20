@@ -7,23 +7,38 @@ A native desktop application that watches a folder and automatically syncs it wi
 - **Real-time folder sync** - Monitors for file additions, modifications, and deletions
 - **Incremental sync** - Only processes changed files based on modification time and content hash
 - **sqlite-vec integration** - Proper vec0 virtual table for vector similarity search
-- **OpenAI embeddings** - Uses text-embedding-3-large (3072 dimensions)
+- **Flexible embeddings** - Choose between local models (free) or OpenAI (paid)
+  - Local: MiniLM (384d), E5 (384d), E5-Large (1024d)
+  - OpenAI: text-embedding-3-large (3072d)
 - **Cross-platform** - Runs natively on Mac, Windows, and Linux
 - **Menu bar/system tray** - Status indicator with sync state
-- **Multiple file formats** - Markdown, text, HTML, PDF, DOC, DOCX
-- **Multi-language support** - UI available in 9 languages with instant switching
+- **Rich file format support** - Documents, presentations, web content, and more
+- **Multi-language UI** - Available in 9 languages with instant switching
 - **Multiple profiles** - Manage multiple independent sync configurations
+- **Built-in MCP server** - Query your documents via HTTP or integrate with AI clients
+- **Cost tracking** - Monitor OpenAI token usage and costs in real-time
+- **Progress indicators** - Visual feedback for model downloads and file sync operations
 
 ## Supported File Types
 
+### Documents
 | Extension | Library | Notes |
 |-----------|---------|-------|
 | `.md` | Built-in | Markdown files |
 | `.txt` | Built-in | Plain text |
-| `.html` / `.htm` | Built-in | HTML (tags stripped) |
 | `.pdf` | pdf-parse | PDF text extraction |
-| `.doc` | word-extractor | Legacy Word documents |
-| `.docx` | mammoth | Modern Word documents |
+| `.doc` | word-extractor | Legacy Word documents (97-2003) |
+| `.docx` | mammoth | Modern Word documents (2007+) |
+| `.odt` | officeparser | OpenDocument Text (LibreOffice, Google Docs) |
+| `.rtf` | officeparser | Rich Text Format |
+| `.pptx` | officeparser | PowerPoint presentations |
+
+### Web
+| Extension | Library | Notes |
+|-----------|---------|-------|
+| `.html` / `.htm` | turndown | HTML converted to Markdown |
+
+All file parsers are optional dependencies. If not installed, the app provides graceful fallback messages.
 
 ## Requirements
 
@@ -86,13 +101,20 @@ Built applications are output to the `release/` directory.
 1. **Launch the app** - Run `npm start` or the built application
 2. **Select Language** (optional) - Choose your preferred language from the dropdown in the header
 3. **Create/Select Profile** - Use the profile tabs to manage multiple sync configurations
-4. **Select Watch Folder** - Click "Select..." to choose a folder to monitor
-5. **Select Database** - Choose where to save the sqlite-vec database
-6. **Configure Settings**:
-   - File extensions to watch
-   - Recursive folder watching
-   - OpenAI API key for embeddings
-7. **Click "Start Syncing"** - The app syncs and monitors for changes
+4. **Configure Profile**:
+   - **Name** - Give your profile a descriptive name
+   - **Watch Folder** - Click "Select..." to choose a folder to monitor
+   - **Database** - Choose where to save the sqlite-vec database
+   - **File Extensions** - Check the boxes for file types you want to process
+   - **Recursive** - Enable to watch subdirectories
+   - **Embedding Provider** - Choose between:
+     - **Local MiniLM** - Fast, small model (384 dimensions, ~120MB)
+     - **Local E5** - Balanced model (384 dimensions, ~130MB)
+     - **Local E5-Large** - Best quality local model (1024 dimensions, ~400MB) - **Recommended**
+     - **OpenAI** - Highest quality, requires API key (3072 dimensions, paid)
+   - **API Key** (OpenAI only) - Enter your OpenAI API key
+5. **Click "Start Syncing"** - The app syncs and monitors for changes
+6. **Monitor Progress** - Track file processing and model downloads in real-time
 
 ### Multi-Profile Support
 
@@ -167,11 +189,11 @@ Database naming: Name your database file as needed (e.g., `my-docs.db`)
 
 ## Database Schema
 
-Creates a proper `vec0` virtual table compatible with sqlite-vec:
+Creates a proper `vec0` virtual table compatible with sqlite-vec. Vector dimensions adapt based on your chosen embedding provider:
 
 ```sql
 CREATE VIRTUAL TABLE vec_items USING vec0(
-    embedding FLOAT[3072],
+    embedding FLOAT[dimension],  -- 384 (MiniLM/E5), 1024 (E5-Large), or 3072 (OpenAI)
     version TEXT,
     heading_hierarchy TEXT,
     section TEXT,
@@ -183,6 +205,8 @@ CREATE VIRTUAL TABLE vec_items USING vec0(
     total_chunks INTEGER
 )
 ```
+
+The database schema automatically adjusts to match your selected embedding provider's output dimensions.
 
 ## Incremental Sync
 
@@ -198,8 +222,59 @@ The app tracks file states to avoid reprocessing unchanged files:
 - **better-sqlite3** - Fast SQLite database access
 - **sqlite-vec** - Vector similarity search extension
 - **chokidar** - Efficient file system monitoring
-- **OpenAI API** - Embedding generation
+- **@huggingface/transformers** - Local embedding model inference
+- **OpenAI API** - Optional cloud embedding generation
 - **TypeScript** - Type-safe development
+- **Express** - Built-in MCP server
+- **i18next** - Internationalization framework
+
+## Embedding Models
+
+Docs4ai supports multiple embedding providers:
+
+### Local Models (Free, Private, Offline-capable)
+
+| Model | Dimensions | Size | Speed | Quality | Best For |
+|-------|------------|------|-------|---------|----------|
+| **MiniLM** | 384 | ~120MB | Fast | Good | Quick testing, limited resources |
+| **E5** | 384 | ~130MB | Fast | Better | General use, good balance |
+| **E5-Large** | 1024 | ~400MB | Medium | Best | Production use, highest quality *(Recommended)* |
+
+**Advantages:**
+- 100% private - data never leaves your machine
+- No API costs
+- Works offline after initial model download
+- Consistent performance
+
+**Disadvantages:**
+- Lower quality than OpenAI (especially for complex queries)
+- Requires disk space for models
+- First-time model download required
+
+### OpenAI (Paid, Cloud-based)
+
+| Model | Dimensions | Cost | Quality |
+|-------|------------|------|---------|
+| **text-embedding-3-large** | 3072 | $0.13/1M tokens | Highest |
+
+**Advantages:**
+- Best embedding quality
+- No local storage needed
+- Always up-to-date
+
+**Disadvantages:**
+- Requires API key and costs money
+- Data sent to OpenAI
+- Requires internet connection
+- Rate limits apply
+
+### Choosing an Embedding Provider
+
+- **For most users**: Start with **Local E5-Large** (free, good quality)
+- **For maximum quality**: Use **OpenAI** (paid, best results)
+- **For limited resources**: Try **Local MiniLM** (fastest, smallest)
+
+**Important**: Changing embedding providers requires clearing and re-syncing your database, as different models produce incompatible vector dimensions.
 
 ## Troubleshooting
 
@@ -214,11 +289,29 @@ sudo chown -R $(whoami) ~/.npm
 npm install
 ```
 
-### PDF/DOC/DOCX not extracting
-These are optional dependencies. Install them explicitly:
+### Document extraction not working
+File format parsers are optional dependencies. Install them explicitly if needed:
 ```bash
-npm install pdf-parse word-extractor mammoth
+# Install all format parsers
+npm install pdf-parse word-extractor mammoth officeparser
+
+# Or install individually
+npm install pdf-parse      # For PDF files
+npm install word-extractor  # For .doc files
+npm install mammoth         # For .docx files
+npm install officeparser    # For .pptx, .rtf, .odt files
 ```
+
+### Local embedding models not downloading
+Local models download automatically on first use. Ensure you have:
+- Stable internet connection
+- Sufficient disk space (~120MB to 400MB per model)
+- Write permissions in the app directory
+
+If downloads fail, try:
+1. Restart the app
+2. Check firewall/proxy settings
+3. Try a different embedding provider
 
 ## License
 

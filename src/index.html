@@ -247,6 +247,62 @@
             height: 18px;
         }
 
+        .extensions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .extension-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            background: #fafafa;
+            border: 1px solid #e5e5ea;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .extension-checkbox:hover {
+            background: #f0f0f0;
+            border-color: #d2d2d7;
+        }
+
+        .extension-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .extension-checkbox.checked {
+            background: #e3f2fd;
+            border-color: #0071e3;
+        }
+
+        .extension-label {
+            cursor: pointer;
+            user-select: none;
+            flex: 1;
+        }
+
+        .extension-category {
+            font-size: 11px;
+            color: #86868b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 12px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .extension-category:first-child {
+            margin-top: 0;
+        }
+
         .stats-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1178,6 +1234,70 @@
             await renderActiveProfile();
         }
 
+        function populateExtensionCheckboxes(profileId, selectedExtensions) {
+            const container = document.getElementById(`extensionsSelector-${profileId}`);
+            if (!container) return;
+
+            // Parse selected extensions
+            const selected = selectedExtensions.split(',').map(e => e.trim()).filter(e => e);
+
+            // Define all supported extensions grouped by category
+            const extensionGroups = [
+                {
+                    category: 'Documents',
+                    extensions: [
+                        { ext: '.md', label: 'Markdown' },
+                        { ext: '.txt', label: 'Text' },
+                        { ext: '.pdf', label: 'PDF' },
+                        { ext: '.doc', label: 'Word 97-2003' },
+                        { ext: '.docx', label: 'Word' },
+                        { ext: '.odt', label: 'OpenDocument' },
+                        { ext: '.rtf', label: 'Rich Text' },
+                        { ext: '.pptx', label: 'PowerPoint' }
+                    ]
+                },
+                {
+                    category: 'Web',
+                    extensions: [
+                        { ext: '.html', label: 'HTML' },
+                        { ext: '.htm', label: 'HTM' }
+                    ]
+                }
+            ];
+
+            // Build the HTML
+            let html = '';
+            for (const group of extensionGroups) {
+                html += `<div class="extension-category">${group.category}</div>`;
+                html += `<div class="extensions-grid">`;
+                for (const item of group.extensions) {
+                    const isChecked = selected.includes(item.ext);
+                    html += `
+                        <label class="extension-checkbox ${isChecked ? 'checked' : ''}" data-ext="${item.ext}">
+                            <input type="checkbox" value="${item.ext}" ${isChecked ? 'checked' : ''} onchange="handleExtensionChange('${profileId}', this)">
+                            <span class="extension-label">${item.label}</span>
+                        </label>
+                    `;
+                }
+                html += `</div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function handleExtensionChange(profileId, checkbox) {
+            // Update the label styling
+            const label = checkbox.closest('.extension-checkbox');
+            if (checkbox.checked) {
+                label.classList.add('checked');
+            } else {
+                label.classList.remove('checked');
+            }
+
+            // Save settings
+            saveProfileSettings(profileId);
+        }
+
         async function renderActiveProfile() {
             const container = document.getElementById('profileContentContainer');
             const profile = profiles.find(p => p.id === activeProfileId);
@@ -1225,8 +1345,10 @@
                         </div>
 
                         <div class="input-group">
-                            <label for="extensions-${profile.id}">${t('ui.fileExtensions')}:</label>
-                            <input type="text" id="extensions-${profile.id}" value="${escapeHtml(profile.fileExtensions)}" placeholder=".md,.txt,.html,.pdf,.doc,.docx,.pptx,.rtf,.odt">
+                            <label>${t('ui.fileExtensions')}:</label>
+                            <div id="extensionsSelector-${profile.id}">
+                                <!-- Extensions will be populated by JavaScript -->
+                            </div>
                         </div>
                     </div>
 
@@ -1306,7 +1428,10 @@
                     </div>
                 </div>
             `;
-            
+
+            // Populate extension checkboxes
+            populateExtensionCheckboxes(profile.id, profile.fileExtensions);
+
             // Setup event listeners for this profile
             setupProfileListeners(profile.id);
             updateApiKeyWarning(profile.id);
@@ -1320,7 +1445,6 @@
         function setupProfileListeners(profileId) {
             const profileNameInput = document.getElementById(`profileName-${profileId}`);
             const apiKeyInput = document.getElementById(`apiKey-${profileId}`);
-            const extensionsInput = document.getElementById(`extensions-${profileId}`);
             const recursiveInput = document.getElementById(`recursive-${profileId}`);
             const selectFolderBtn = document.getElementById(`selectFolderBtn-${profileId}`);
             const selectDatabaseBtn = document.getElementById(`selectDatabaseBtn-${profileId}`);
@@ -1369,11 +1493,7 @@
                     saveProfileSettings(profileId);
                 });
             }
-            
-            if (extensionsInput) {
-                extensionsInput.addEventListener('change', () => saveProfileSettings(profileId));
-            }
-            
+
             if (recursiveInput) {
                 recursiveInput.addEventListener('change', () => saveProfileSettings(profileId));
             }
@@ -1527,22 +1647,26 @@
         async function saveProfileSettings(profileId) {
             const profile = profiles.find(p => p.id === profileId);
             if (!profile) return;
-            
+
             const folderPathEl = document.getElementById(`folderPath-${profileId}`);
             const dbPathEl = document.getElementById(`databasePath-${profileId}`);
             const embeddingProviderEl = document.getElementById(`embeddingProvider-${profileId}`);
-            
+
+            // Collect selected extensions from checkboxes
+            const extensionCheckboxes = document.querySelectorAll(`#extensionsSelector-${profileId} input[type="checkbox"]:checked`);
+            const selectedExtensions = Array.from(extensionCheckboxes).map(cb => cb.value).join(',');
+
             const updates = {
                 watchedFolder: (folderPathEl.textContent === t('ui.noFolderSelected')) ? '' : folderPathEl.textContent,
                 databasePath: (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent,
                 openAIApiKey: document.getElementById(`apiKey-${profileId}`).value,
-                fileExtensions: document.getElementById(`extensions-${profileId}`).value,
+                fileExtensions: selectedExtensions,
                 recursive: document.getElementById(`recursive-${profileId}`).checked,
                 embeddingProvider: embeddingProviderEl?.value || 'local-e5-large'
             };
-            
+
             await window.api.updateProfile(profileId, updates);
-            
+
             // Update local profile data
             Object.assign(profile, updates);
         }
