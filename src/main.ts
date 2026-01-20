@@ -1077,6 +1077,13 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
         // Initialize processor
         state.processor = new ContentProcessor();
 
+        // Terminate existing embedding service if any (cleanup from previous run)
+        if (state.embeddingService) {
+            console.log(`[${profile.name}] Terminating existing embedding service...`);
+            await state.embeddingService.terminate();
+            state.embeddingService = null;
+        }
+
         // Initialize embedding service
         if (embeddingProvider === 'openai') {
             state.embeddingService = new EmbeddingService('openai', openAIApiKey);
