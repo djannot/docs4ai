@@ -60,7 +60,7 @@ export const LOCAL_MODELS: Record<string, LocalModelConfig> = {
     'local-qwen3': {
         id: 'local-qwen3',
         name: 'Qwen3 Embedding 0.6B',
-        huggingFaceId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
+        huggingFaceId: 'zhiqing/Qwen3-Embedding-0.6B-ONNX',
         dimension: 1024,
         sizeApprox: '~600 MB',
         description: 'High-quality Qwen3 embeddings, ONNX optimized',
