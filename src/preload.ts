@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
     startWatching: (profileId: string) => ipcRenderer.invoke('start-watching', profileId),
     stopWatching: (profileId: string) => ipcRenderer.invoke('stop-watching', profileId),
     forceSync: (profileId: string) => ipcRenderer.invoke('force-sync', profileId),
+    clearDatabase: (profileId: string) => ipcRenderer.invoke('clear-database', profileId),
     startMcpServer: (profileId: string) => ipcRenderer.invoke('start-mcp-server', profileId),
     stopMcpServer: (profileId: string) => ipcRenderer.invoke('stop-mcp-server', profileId),
     getMcpStatus: (profileId: string) => ipcRenderer.invoke('get-mcp-status', profileId),
@@ -47,5 +48,8 @@ contextBridge.exposeInMainWorld('api', {
     getTranslations: (locale?: string) => ipcRenderer.invoke('get-translations', locale),
     onLanguageChanged: (callback: (locale: string) => void) => {
         ipcRenderer.on('language-changed', (_event: IpcRendererEvent, locale: string) => callback(locale));
+    },
+    onModelDownloadProgress: (callback: (data: { profileId: string; status: string; file?: string; percent?: number; modelName?: string }) => void) => {
+        ipcRenderer.on('model-download-progress', (_event: IpcRendererEvent, data) => callback(data));
     }
 });

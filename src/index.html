@@ -110,6 +110,39 @@
             gap: 6px;
         }
 
+        .download-progress-card {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border: 1px solid #90caf9;
+        }
+
+        .download-progress-info {
+            font-size: 14px;
+            color: #1565c0;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .download-progress-bar-container {
+            height: 8px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .download-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #42a5f5, #7e57c2);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .download-progress-text {
+            font-size: 12px;
+            color: #5e35b1;
+            text-align: center;
+        }
+
         .input-group {
             margin-bottom: 12px;
         }
@@ -1201,14 +1234,38 @@
                         <div class="card-title">🧠 ${t('profile.embeddings', {})}</div>
                         
                         <div class="input-group">
+                            <label for="embeddingProvider-${profile.id}">${t('ui.embeddingProvider')}:</label>
+                            <select id="embeddingProvider-${profile.id}" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
+                                <option value="local-minilm" ${profile.embeddingProvider === 'local-minilm' ? 'selected' : ''}>${t('ui.localMinilm')} (${t('ui.free')})</option>
+                                <option value="local-e5" ${profile.embeddingProvider === 'local-e5' || profile.embeddingProvider === 'local-qwen' ? 'selected' : ''}>${t('ui.localE5')} (${t('ui.free')})</option>
+                                <option value="local-e5-large" ${(profile.embeddingProvider || 'local-e5-large') === 'local-e5-large' ? 'selected' : ''}>${t('ui.localE5Large')} (${t('ui.free')})</option>
+                                <option value="openai" ${profile.embeddingProvider === 'openai' ? 'selected' : ''}>${t('ui.openaiEmbeddings')} (${t('ui.paid')})</option>
+                            </select>
+                            <div class="model-description" id="modelDescription-${profile.id}" style="margin-top: 6px; font-size: 12px; color: #666;">
+                                ${getModelDescription(profile.embeddingProvider || 'local-e5-large')}
+                            </div>
+                        </div>
+                        
+                        <div class="input-group" id="apiKeyGroup-${profile.id}" style="display: ${profile.embeddingProvider === 'openai' ? 'block' : 'none'};">
                             <label for="apiKey-${profile.id}">${t('ui.apiKey')}:</label>
                             <input type="password" id="apiKey-${profile.id}" value="${escapeHtml(profile.openAIApiKey || '')}" placeholder="sk-...">
                         </div>
 
-                        <div class="info">${t('ui.usesEmbedding')}</div>
+                        <div class="info" id="embeddingInfo-${profile.id}">${profile.embeddingProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo')}</div>
                         <div class="warning" id="apiKeyWarning-${profile.id}" style="display: none;">
                             ${t('ui.apiKeyRequired')}
                         </div>
+                    </div>
+
+                    <div class="card download-progress-card" id="downloadProgress-${profile.id}" style="display: none;">
+                        <div class="card-title">⬇️ ${t('ui.downloadingModel')}</div>
+                        <div class="download-progress-info">
+                            <span id="downloadModelName-${profile.id}"></span>
+                        </div>
+                        <div class="download-progress-bar-container">
+                            <div class="download-progress-bar" id="downloadProgressBar-${profile.id}" style="width: 0%"></div>
+                        </div>
+                        <div class="download-progress-text" id="downloadProgressText-${profile.id}"></div>
                     </div>
 
                     <div class="card">
@@ -1222,11 +1279,11 @@
                             <span class="stat-label">${t('ui.totalChunks')}</span>
                             <span class="stat-value" id="totalChunks-${profile.id}">${stats.totalChunks || 0}</span>
                         </div>
-                        <div class="stat-item">
+                        <div class="stat-item" id="tokensRow-${profile.id}" style="display: ${profile.embeddingProvider === 'openai' ? 'flex' : 'none'};">
                             <span class="stat-label">${t('ui.totalTokens')}</span>
                             <span class="stat-value" id="totalTokens-${profile.id}">${(stats.totalTokens || 0).toLocaleString()}</span>
                         </div>
-                        <div class="stat-item">
+                        <div class="stat-item" id="costRow-${profile.id}" style="display: ${profile.embeddingProvider === 'openai' ? 'flex' : 'none'};">
                             <span class="stat-label">${t('ui.totalCost')}</span>
                             <span class="stat-value" id="totalCost-${profile.id}">$${(stats.totalCost || 0).toFixed(4)}</span>
                         </div>
@@ -1258,6 +1315,7 @@
             const selectDatabaseBtn = document.getElementById(`selectDatabaseBtn-${profileId}`);
             const browseDbBtn = document.getElementById(`browseDbBtn-${profileId}`);
             const startBtn = document.getElementById(`startBtn-${profileId}`);
+            const embeddingProviderSelect = document.getElementById(`embeddingProvider-${profileId}`);
             
             if (profileNameInput) {
                 // Save on blur (when user finishes editing)
@@ -1307,6 +1365,101 @@
             
             if (recursiveInput) {
                 recursiveInput.addEventListener('change', () => saveProfileSettings(profileId));
+            }
+            
+            if (embeddingProviderSelect) {
+                embeddingProviderSelect.addEventListener('change', async (e) => {
+                    const newProvider = embeddingProviderSelect.value;
+                    const profile = profiles.find(p => p.id === profileId);
+                    const oldProvider = profile?.embeddingProvider || 'local-e5-large';
+                    
+                    // If provider actually changed, warn user about database reset
+                    if (oldProvider !== newProvider) {
+                        const stats = profileStats.get(profileId) || { isSyncing: false };
+                        
+                        // Build confirmation message
+                        let confirmMsg = t('ui.embeddingProviderChangeWarning');
+                        if (stats.isSyncing) {
+                            confirmMsg += '\n\n' + t('ui.syncWillBeStopped');
+                        }
+                        
+                        if (!confirm(confirmMsg)) {
+                            // User cancelled - revert selection
+                            embeddingProviderSelect.value = oldProvider;
+                            return;
+                        }
+                        
+                        // Stop sync if running
+                        if (stats.isSyncing) {
+                            await window.api.stopWatching(profileId);
+                        }
+                        
+                        // Update the profile in the local profiles array so saveProfileSettings uses the new value
+                        if (profile) {
+                            profile.embeddingProvider = newProvider;
+                        }
+                        
+                        // Save profile settings FIRST with new provider so database uses correct dimension
+                        await saveProfileSettings(profileId);
+                        
+                        // Then clear the database
+                        if (profile?.databasePath) {
+                            await window.api.clearDatabase(profileId);
+                        }
+                        
+                        // Reset stats to reflect cleared database
+                        const resetStats = {
+                            profileId,
+                            isSyncing: false,
+                            trackedFiles: 0,
+                            totalChunks: 0,
+                            totalTokens: 0,
+                            totalCost: 0,
+                            embeddingProvider: newProvider
+                        };
+                        updateStats(resetStats);
+                        
+                        // Also directly update the token/cost display elements
+                        const tokensEl = document.getElementById(`totalTokens-${profileId}`);
+                        const costEl = document.getElementById(`totalCost-${profileId}`);
+                        if (tokensEl) tokensEl.textContent = '0';
+                        if (costEl) costEl.textContent = '$0.0000';
+                    }
+                    
+                    const apiKeyGroup = document.getElementById(`apiKeyGroup-${profileId}`);
+                    const embeddingInfo = document.getElementById(`embeddingInfo-${profileId}`);
+                    const tokensRow = document.getElementById(`tokensRow-${profileId}`);
+                    const costRow = document.getElementById(`costRow-${profileId}`);
+                    const modelDescription = document.getElementById(`modelDescription-${profileId}`);
+                    
+                    if (apiKeyGroup) {
+                        apiKeyGroup.style.display = newProvider === 'openai' ? 'block' : 'none';
+                    }
+                    if (embeddingInfo) {
+                        embeddingInfo.textContent = newProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo');
+                    }
+                    if (modelDescription) {
+                        modelDescription.textContent = getModelDescription(newProvider);
+                    }
+                    // Show/hide token and cost rows based on provider
+                    if (tokensRow) {
+                        tokensRow.style.display = newProvider === 'openai' ? 'flex' : 'none';
+                    }
+                    if (costRow) {
+                        costRow.style.display = newProvider === 'openai' ? 'flex' : 'none';
+                    }
+                    
+                    // Only save again if provider didn't change (otherwise already saved above)
+                    if (oldProvider === newProvider) {
+                        await saveProfileSettings(profileId);
+                    }
+                    updateApiKeyWarning(profileId);
+                    
+                    // Refresh stats to show cleared database
+                    const newStats = await window.api.getStats(profileId);
+                    profileStats.set(profileId, newStats);
+                    updateStats(newStats);
+                });
             }
             
             if (selectFolderBtn) {
@@ -1366,13 +1519,15 @@
             
             const folderPathEl = document.getElementById(`folderPath-${profileId}`);
             const dbPathEl = document.getElementById(`databasePath-${profileId}`);
+            const embeddingProviderEl = document.getElementById(`embeddingProvider-${profileId}`);
             
             const updates = {
                 watchedFolder: (folderPathEl.textContent === t('ui.noFolderSelected')) ? '' : folderPathEl.textContent,
                 databasePath: (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent,
                 openAIApiKey: document.getElementById(`apiKey-${profileId}`).value,
                 fileExtensions: document.getElementById(`extensions-${profileId}`).value,
-                recursive: document.getElementById(`recursive-${profileId}`).checked
+                recursive: document.getElementById(`recursive-${profileId}`).checked,
+                embeddingProvider: embeddingProviderEl?.value || 'local-e5-large'
             };
             
             await window.api.updateProfile(profileId, updates);
@@ -1394,6 +1549,17 @@
                 
                 if (stats.isSyncing) {
                     await window.api.stopWatching(profileId);
+                    // Immediately switch to Start button after stopping
+                    btn.disabled = false;
+                    btn.textContent = t('ui.startSyncing');
+                    btn.className = 'btn-primary';
+                    document.getElementById('statusDot')?.classList.remove('active');
+                    document.getElementById('statusText').textContent = t('tray.notSyncing');
+                    // Update local stats
+                    const currentStats = profileStats.get(profileId) || {};
+                    profileStats.set(profileId, { ...currentStats, isSyncing: false });
+                    renderTabs();
+                    updateOverallStatus();
                 } else {
                     const result = await window.api.startWatching(profileId);
                     if (!result.success) {
@@ -1403,6 +1569,17 @@
                         updateApiKeyWarning(profileId);
                         return;
                     }
+                    // Immediately switch to Stop button after successful start
+                    btn.disabled = false;
+                    btn.textContent = t('ui.stopSync');
+                    btn.className = 'btn-danger';
+                    document.getElementById('statusDot')?.classList.add('active');
+                    document.getElementById('statusText').textContent = t('ui.syncing');
+                    // Update local stats
+                    const currentStats = profileStats.get(profileId) || {};
+                    profileStats.set(profileId, { ...currentStats, isSyncing: true });
+                    renderTabs();
+                    updateOverallStatus();
                 }
             } catch (error) {
                 btn.disabled = false;
@@ -1426,6 +1603,14 @@
                     
                     document.getElementById(`trackedFiles-${stats.profileId}`).textContent = stats.trackedFiles;
                     document.getElementById(`totalChunks-${stats.profileId}`).textContent = stats.totalChunks;
+                    
+                    // Update token/cost stats (only visible for OpenAI)
+                    const isOpenAI = stats.embeddingProvider === 'openai';
+                    const tokensRow = document.getElementById(`tokensRow-${stats.profileId}`);
+                    const costRow = document.getElementById(`costRow-${stats.profileId}`);
+                    if (tokensRow) tokensRow.style.display = isOpenAI ? 'flex' : 'none';
+                    if (costRow) costRow.style.display = isOpenAI ? 'flex' : 'none';
+                    
                     const tokensEl = document.getElementById(`totalTokens-${stats.profileId}`);
                     if (tokensEl) tokensEl.textContent = (stats.totalTokens || 0).toLocaleString();
                     const costEl = document.getElementById(`totalCost-${stats.profileId}`);
@@ -1481,13 +1666,17 @@
         function updateApiKeyWarning(profileId) {
             if (profileId !== activeProfileId) return;
             
+            const embeddingProvider = document.getElementById(`embeddingProvider-${profileId}`)?.value || 'local-e5-large';
             const apiKey = document.getElementById(`apiKey-${profileId}`)?.value || '';
             const hasApiKey = apiKey && apiKey.trim().length > 0;
             const warning = document.getElementById(`apiKeyWarning-${profileId}`);
             
+            // Only show warning if using OpenAI and no API key
+            const needsApiKey = embeddingProvider === 'openai' && !hasApiKey;
+            
             if (warning) {
-                warning.style.display = !hasApiKey ? 'block' : 'none';
-                if (!hasApiKey) {
+                warning.style.display = needsApiKey ? 'block' : 'none';
+                if (needsApiKey) {
                     warning.textContent = t('ui.apiKeyRequired');
                 }
             }
@@ -1496,8 +1685,9 @@
             if (startBtn) {
                 const stats = profileStats.get(profileId) || { isSyncing: false };
                 if (!stats.isSyncing) {
-                    startBtn.disabled = !hasApiKey;
-                    if (!hasApiKey) {
+                    // Only disable if using OpenAI without API key
+                    startBtn.disabled = needsApiKey;
+                    if (needsApiKey) {
                         startBtn.title = t('ui.apiKeyRequired');
                     } else {
                         startBtn.title = '';
@@ -1515,6 +1705,31 @@
         // Listen for stats updates from main process
         window.api.onStatsUpdate(updateStats);
         window.api.onStatsUpdateAll(updateStatsAll);
+
+        // Listen for model download progress
+        window.api.onModelDownloadProgress((data) => {
+            const { profileId, status, percent, modelName } = data;
+            
+            const progressCard = document.getElementById(`downloadProgress-${profileId}`);
+            const progressBar = document.getElementById(`downloadProgressBar-${profileId}`);
+            const progressText = document.getElementById(`downloadProgressText-${profileId}`);
+            const modelNameEl = document.getElementById(`downloadModelName-${profileId}`);
+            
+            if (!progressCard) return;
+            
+            if (status === 'downloading') {
+                // Only show progress card when actually downloading
+                progressCard.style.display = 'block';
+                if (modelNameEl) modelNameEl.textContent = modelName || '';
+                if (progressBar) progressBar.style.width = `${percent || 0}%`;
+                if (progressText) {
+                    progressText.textContent = `${t('ui.downloading')}... ${percent || 0}%`;
+                }
+            } else if (status === 'ready') {
+                // Hide the progress card when model is ready
+                progressCard.style.display = 'none';
+            }
+        });
 
         // Listen for API key errors
         window.api.onApiKeyError((data) => {
@@ -2057,6 +2272,17 @@
         let translations = {};
         
         // Simple translation function
+        function getModelDescription(provider) {
+            const descriptions = {
+                'local-minilm': t('ui.minilmDescription'),
+                'local-e5': t('ui.e5Description'),
+                'local-e5-large': t('ui.e5LargeDescription'),
+                'local-qwen': t('ui.e5Description'), // Fallback for old provider
+                'openai': t('ui.openaiDescription')
+            };
+            return descriptions[provider] || '';
+        }
+
         function t(key, options = {}) {
             const keys = key.split('.');
             let value = translations;

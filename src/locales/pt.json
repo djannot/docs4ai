@@ -31,7 +31,7 @@
     "delete": "Excluir Perfil",
     "deleteConfirm": "Tem certeza de que deseja excluir este perfil?",
     "settings": "Configurações",
-    "embeddings": "Embeddings (OpenAI)",
+    "embeddings": "Embeddings",
     "stats": "Estatísticas"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "Monitorar subdiretórios",
     "fileExtensions": "Extensões de arquivo",
     "apiKey": "Chave API",
-    "apiKeyRequired": "Chave API necessária para embeddings",
+    "apiKeyRequired": "Chave API necessária para embeddings OpenAI",
     "usesEmbedding": "Usa text-embedding-3-large (3072 dimensões)",
+    "embeddingProvider": "Modelo de embeddings",
+    "localMinilm": "MiniLM-L6 (Rápido, ~23MB)",
+    "localE5": "E5 Multilíngue Base (~440MB)",
+    "localE5Large": "E5 Multilíngue Large (~1.1GB)",
+    "openaiEmbeddings": "API OpenAI",
+    "free": "Grátis",
+    "paid": "Pago",
+    "localEmbeddingInfo": "O modelo local funciona offline, baixado no primeiro uso",
+    "minilmDescription": "384 dimensões • Inferência rápida • Bom para uso geral",
+    "e5Description": "768 dimensões • 100+ idiomas • Boa qualidade",
+    "e5LargeDescription": "1024 dimensões • 100+ idiomas • Melhor qualidade local",
+    "openaiDescription": "3072 dimensões • Requer chave API • Melhor qualidade",
+    "embeddingProviderChangeWarning": "Alterar o provedor de embeddings requer excluir o banco de dados e ressincronizar todos os arquivos. As dimensões de embedding são diferentes entre os provedores.\n\nDeseja continuar?",
+    "syncWillBeStopped": "Nota: A sincronização atual será interrompida.",
     "filesTracked": "Arquivos rastreados",
     "totalChunks": "Total de fragmentos",
     "totalTokens": "Total de tokens",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "Navegar Banco de Dados",
     "backToFiles": "← Voltar para arquivos",
     "noChunksFound": "Nenhum fragmento encontrado para este arquivo.",
-    "chunks": "fragmentos"
+    "chunks": "fragmentos",
+    "downloadingModel": "Baixando modelo",
+    "loadingModel": "Carregando modelo...",
+    "downloading": "Baixando",
+    "downloaded": "Baixado"
   }
 }

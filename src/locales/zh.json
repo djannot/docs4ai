@@ -31,7 +31,7 @@
     "delete": "删除配置文件",
     "deleteConfirm": "您确定要删除此配置文件吗？",
     "settings": "设置",
-    "embeddings": "嵌入 (OpenAI)",
+    "embeddings": "嵌入",
     "stats": "统计"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "监视子目录",
     "fileExtensions": "文件扩展名",
     "apiKey": "API 密钥",
-    "apiKeyRequired": "嵌入需要 API 密钥",
+    "apiKeyRequired": "OpenAI 嵌入需要 API 密钥",
     "usesEmbedding": "使用 text-embedding-3-large (3072 维)",
+    "embeddingProvider": "嵌入模型",
+    "localMinilm": "MiniLM-L6 (快速, ~23MB)",
+    "localE5": "E5 多语言 Base (~440MB)",
+    "localE5Large": "E5 多语言 Large (~1.1GB)",
+    "openaiEmbeddings": "OpenAI API",
+    "free": "免费",
+    "paid": "付费",
+    "localEmbeddingInfo": "本地模型离线运行，首次使用时下载",
+    "minilmDescription": "384 维 • 推理快速 • 适合一般用途",
+    "e5Description": "768 维 • 100+ 语言 • 良好质量",
+    "e5LargeDescription": "1024 维 • 100+ 语言 • 最佳本地质量",
+    "openaiDescription": "3072 维 • 需要 API 密钥 • 最佳质量",
+    "embeddingProviderChangeWarning": "更改嵌入提供商需要删除数据库并重新同步所有文件。不同提供商之间的嵌入维度不同。\n\n是否继续？",
+    "syncWillBeStopped": "注意：当前同步将被停止。",
     "filesTracked": "跟踪的文件",
     "totalChunks": "总块数",
     "totalTokens": "总令牌数",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "浏览数据库",
     "backToFiles": "← 返回文件",
     "noChunksFound": "未找到此文件的块。",
-    "chunks": "块"
+    "chunks": "块",
+    "downloadingModel": "正在下载模型",
+    "loadingModel": "正在加载模型...",
+    "downloading": "正在下载",
+    "downloaded": "已下载"
   }
 }

@@ -1,18 +1,21 @@
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { DocumentChunk } from './processor';
+import { LOCAL_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION } from './embeddings';
 
 export class DatabaseManager {
     private db: Database.Database;
     private insertStmt: Database.Statement;
     private updateStmt: Database.Statement;
+    private embeddingDimension: number;
     
     // Cache counts for immediate UI feedback
     private _trackedFilesCount: number = 0;
     private _totalChunksCount: number = 0;
 
-    constructor(dbPath: string) {
+    constructor(dbPath: string, embeddingDimension: number = LOCAL_EMBEDDING_DIMENSION) {
         this.db = new Database(dbPath);
+        this.embeddingDimension = embeddingDimension;
         sqliteVec.load(this.db);
         this.createTables();
         
@@ -30,7 +33,7 @@ export class DatabaseManager {
         this._trackedFilesCount = this._queryTrackedFilesCount();
         this._totalChunksCount = this._queryTotalChunksCount();
         
-        console.log(`Database initialized at: ${dbPath}`);
+        console.log(`Database initialized at: ${dbPath} (embedding dimension: ${embeddingDimension})`);
     }
     
     private _queryTrackedFilesCount(): number {
@@ -46,20 +49,38 @@ export class DatabaseManager {
     }
 
     private createTables() {
-        // Create vec0 virtual table (sqlite-vec)
-        this.db.exec(`
-            CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
-                embedding FLOAT[3072],
-                heading_hierarchy TEXT,
-                section TEXT,
-                chunk_id TEXT UNIQUE,
-                content TEXT,
-                url TEXT,
-                hash TEXT,
-                chunk_index INTEGER,
-                total_chunks INTEGER
-            )
-        `);
+        // Check if vec_items table already exists
+        const tableExists = this.db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='vec_items'"
+        ).get();
+
+        if (tableExists) {
+            // Table exists - check if we need to recreate it with different dimensions
+            // Get the current dimension from metadata or infer it
+            const currentDimension = this.getCurrentEmbeddingDimension();
+            
+            if (currentDimension !== this.embeddingDimension) {
+                console.warn(`Embedding dimension mismatch: database has ${currentDimension}, requested ${this.embeddingDimension}`);
+                console.warn('Database will continue with existing dimension. To change, clear data or use a new database.');
+                // Use the existing dimension to avoid data corruption
+                this.embeddingDimension = currentDimension;
+            }
+        } else {
+            // Create new vec0 virtual table with specified dimension
+            this.db.exec(`
+                CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(
+                    embedding FLOAT[${this.embeddingDimension}],
+                    heading_hierarchy TEXT,
+                    section TEXT,
+                    chunk_id TEXT UNIQUE,
+                    content TEXT,
+                    url TEXT,
+                    hash TEXT,
+                    chunk_index INTEGER,
+                    total_chunks INTEGER
+                )
+            `);
+        }
 
         // Create files tracking table
         this.db.exec(`
@@ -71,11 +92,63 @@ export class DatabaseManager {
             )
         `);
 
+        // Create metadata table to store embedding dimension info
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        `);
+
+        // Store embedding dimension in metadata
+        this.db.prepare(`
+            INSERT OR REPLACE INTO metadata (key, value) VALUES ('embedding_dimension', ?)
+        `).run(String(this.embeddingDimension));
+
         console.log('Database tables created');
     }
 
+    private getCurrentEmbeddingDimension(): number {
+        try {
+            // Try to get from metadata table
+            const metadataExists = this.db.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='metadata'"
+            ).get();
+            
+            if (metadataExists) {
+                const row = this.db.prepare(
+                    "SELECT value FROM metadata WHERE key = 'embedding_dimension'"
+                ).get() as { value: string } | undefined;
+                
+                if (row) {
+                    return parseInt(row.value, 10);
+                }
+            }
+            
+            // Fallback: check for existing data and infer dimension
+            // For now, default to OpenAI dimension for backward compatibility with existing databases
+            const hasData = this.db.prepare('SELECT 1 FROM vec_items LIMIT 1').get();
+            if (hasData) {
+                // Existing database without metadata - assume OpenAI dimension
+                return OPENAI_EMBEDDING_DIMENSION;
+            }
+            
+            // No data, use the requested dimension
+            return this.embeddingDimension;
+        } catch {
+            return this.embeddingDimension;
+        }
+    }
+
+    getEmbeddingDimension(): number {
+        return this.embeddingDimension;
+    }
+
     insertChunk(chunk: DocumentChunk, embedding: number[] | null) {
-        const embeddingData = embedding ? new Float32Array(embedding) : new Float32Array(3072).fill(0);
+        const embeddingData = embedding 
+            ? new Float32Array(embedding) 
+            : new Float32Array(this.embeddingDimension).fill(0);
+        
         // Use JSON.stringify for heading_hierarchy to match doc2vec format
         const headingHierarchyJson = JSON.stringify(chunk.headingHierarchy);
 

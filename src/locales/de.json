@@ -31,7 +31,7 @@
     "delete": "Profil löschen",
     "deleteConfirm": "Sind Sie sicher, dass Sie dieses Profil löschen möchten?",
     "settings": "Einstellungen",
-    "embeddings": "Einbettungen (OpenAI)",
+    "embeddings": "Einbettungen",
     "stats": "Statistiken"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "Unterverzeichnisse überwachen",
     "fileExtensions": "Dateierweiterungen",
     "apiKey": "API-Schlüssel",
-    "apiKeyRequired": "API-Schlüssel für Einbettungen erforderlich",
+    "apiKeyRequired": "API-Schlüssel für OpenAI-Einbettungen erforderlich",
     "usesEmbedding": "Verwendet text-embedding-3-large (3072 Dimensionen)",
+    "embeddingProvider": "Einbettungsmodell",
+    "localMinilm": "MiniLM-L6 (Schnell, ~23MB)",
+    "localE5": "E5 Mehrsprachig Base (~440MB)",
+    "localE5Large": "E5 Mehrsprachig Large (~1.1GB)",
+    "openaiEmbeddings": "OpenAI API",
+    "free": "Kostenlos",
+    "paid": "Kostenpflichtig",
+    "localEmbeddingInfo": "Lokales Modell läuft offline, wird bei erster Verwendung heruntergeladen",
+    "minilmDescription": "384 Dimensionen • Schnelle Inferenz • Gut für allgemeine Nutzung",
+    "e5Description": "768 Dimensionen • 100+ Sprachen • Gute Qualität",
+    "e5LargeDescription": "1024 Dimensionen • 100+ Sprachen • Beste lokale Qualität",
+    "openaiDescription": "3072 Dimensionen • API-Schlüssel erforderlich • Beste Qualität",
+    "embeddingProviderChangeWarning": "Das Ändern des Einbettungsanbieters erfordert das Löschen der Datenbank und das erneute Synchronisieren aller Dateien. Die Einbettungsdimensionen sind zwischen den Anbietern unterschiedlich.\n\nMöchten Sie fortfahren?",
+    "syncWillBeStopped": "Hinweis: Die aktuelle Synchronisierung wird gestoppt.",
     "filesTracked": "Verfolgte Dateien",
     "totalChunks": "Gesamt-Chunks",
     "totalTokens": "Gesamt-Tokens",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "Datenbank durchsuchen",
     "backToFiles": "← Zurück zu Dateien",
     "noChunksFound": "Keine Chunks für diese Datei gefunden.",
-    "chunks": "Chunks"
+    "chunks": "Chunks",
+    "downloadingModel": "Modell wird heruntergeladen",
+    "loadingModel": "Modell wird geladen...",
+    "downloading": "Herunterladen",
+    "downloaded": "Heruntergeladen"
   }
 }

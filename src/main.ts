@@ -5,9 +5,21 @@ import Store from 'electron-store';
 import { FolderSyncer } from './syncer';
 import { DatabaseManager } from './database';
 import { ContentProcessor } from './processor';
-import { EmbeddingService, InvalidApiKeyError } from './embeddings';
+import { EmbeddingService, InvalidApiKeyError, EmbeddingProvider, getEmbeddingDimension, LOCAL_MODELS } from './embeddings';
 import { McpServer } from './mcp-server';
 import { initI18n, t, changeLanguage, getCurrentLanguage, getAvailableLanguages, isInitialized } from './i18n';
+
+// Helper to migrate old provider values to current ones
+function migrateEmbeddingProvider(provider: string | undefined): EmbeddingProvider {
+    if (!provider || provider === 'local') {
+        return 'local-minilm';
+    }
+    // Migrate old 'local-qwen' to 'local-e5' (Qwen was not compatible with transformers.js)
+    if (provider === 'local-qwen') {
+        return 'local-e5';
+    }
+    return provider as EmbeddingProvider;
+}
 
 interface ProfileSettings {
     id: string;
@@ -19,6 +31,7 @@ interface ProfileSettings {
     recursive: boolean;
     mcpServerEnabled: boolean;
     mcpServerPort: number;
+    embeddingProvider: EmbeddingProvider;  // 'local-minilm', 'local-e5', 'local-e5-large', or 'openai'
 }
 
 interface AppSettings {
@@ -409,7 +422,8 @@ function setupIpcHandlers() {
                 fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx',
                 recursive: true,
                 mcpServerEnabled: false,
-                mcpServerPort: nextPort
+                mcpServerPort: nextPort,
+                embeddingProvider: 'local-e5-large'  // Default to local embeddings
             };
             
             console.log('[IPC] Created profile object:', newProfile);
@@ -480,13 +494,23 @@ function setupIpcHandlers() {
         
         store.store = appSettings;
         
-        // Update embedding service if API key changed
+        // Update embedding service if provider or API key changed
         const state = profileStates.get(profileId);
-        if (updates.openAIApiKey && state) {
-            state.embeddingService = new EmbeddingService(updates.openAIApiKey);
+        if (state) {
+            const profile = appSettings.profiles![profileIndex];
+            if (updates.embeddingProvider !== undefined || updates.openAIApiKey !== undefined) {
+                // Recreate embedding service with new settings
+                if (profile.embeddingProvider === 'openai' && profile.openAIApiKey) {
+                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey);
+                } else {
+                    state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider));
+                }
+            }
+            
             // Also update MCP server for this profile if running
             if (state.mcpServer) {
-                state.mcpServer.setApiKey(updates.openAIApiKey);
+                state.mcpServer.setApiKey(profile.openAIApiKey);
+                state.mcpServer.setEmbeddingProvider(profile.embeddingProvider);
             }
         }
         
@@ -533,13 +557,15 @@ function setupIpcHandlers() {
         const port = profile.mcpServerPort || 3333;
         const dbPath = profile.databasePath;
         const apiKey = profile.openAIApiKey;
+        const embeddingProvider = migrateEmbeddingProvider(profile.embeddingProvider);
 
         if (!dbPath) {
             return { success: false, error: 'Database path not configured for this profile' };
         }
 
-        if (!apiKey) {
-            return { success: false, error: 'OpenAI API key required for MCP server' };
+        // Only require API key if using OpenAI
+        if (embeddingProvider === 'openai' && !apiKey) {
+            return { success: false, error: 'OpenAI API key required when using OpenAI embeddings' };
         }
 
         // Check if port is already in use by another profile
@@ -583,7 +609,8 @@ function setupIpcHandlers() {
             state.mcpServer = new McpServer(port);
             state.mcpServer.setDatabase(dbPath);
             state.mcpServer.setApiKey(apiKey);
-            // Track costs for MCP queries
+            state.mcpServer.setEmbeddingProvider(embeddingProvider);
+            // Track costs for MCP queries (only for OpenAI)
             state.mcpServer.setOnCostUpdate((tokens, cost) => {
                 if (state) {
                     state.totalTokens += tokens;
@@ -742,7 +769,8 @@ function setupIpcHandlers() {
         
         if (profile?.databasePath) {
             try {
-                const db = new DatabaseManager(profile.databasePath);
+                const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
+                const db = new DatabaseManager(profile.databasePath, embeddingDimension);
                 trackedFiles = db.getTrackedFilesCount();
                 totalChunks = db.getTotalChunksCount();
                 db.close();
@@ -763,7 +791,8 @@ function setupIpcHandlers() {
             trackedFiles,
             totalChunks,
             totalTokens,
-            totalCost
+            totalCost,
+            embeddingProvider: profile?.embeddingProvider || 'local-e5-large'
         };
     });
 
@@ -785,7 +814,8 @@ function setupIpcHandlers() {
         }
         
         try {
-            const db = new DatabaseManager(profile.databasePath);
+            const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
+            const db = new DatabaseManager(profile.databasePath, embeddingDimension);
             const files = db.getAllTrackedFilesWithInfo();
             db.close();
             return files;
@@ -813,7 +843,8 @@ function setupIpcHandlers() {
         }
         
         try {
-            const db = new DatabaseManager(profile.databasePath);
+            const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
+            const db = new DatabaseManager(profile.databasePath, embeddingDimension);
             const chunks = db.getChunksForFile(filePath);
             db.close();
             return chunks;
@@ -829,13 +860,28 @@ function setupIpcHandlers() {
     });
 
     // Stop watching a profile
-    ipcMain.handle('stop-watching', (_event: IpcMainInvokeEvent, profileId: string) => {
+    ipcMain.handle('stop-watching', async (_event: IpcMainInvokeEvent, profileId: string) => {
         syncCancelled.set(profileId, true);
         const state = profileStates.get(profileId);
         if (state) {
             state.syncer?.stop();
             state.syncer = null;
+            
+            // Terminate embedding worker to stop any ongoing download
+            if (state.embeddingService) {
+                await state.embeddingService.terminate();
+                state.embeddingService = null;
+            }
         }
+        
+        // Hide download progress indicator
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('model-download-progress', {
+                profileId,
+                status: 'ready'  // 'ready' status hides the indicator
+            });
+        }
+        
         sendStats(profileId);
         updateTray();
         return { success: true };
@@ -852,6 +898,66 @@ function setupIpcHandlers() {
         await performInitialSync(profileId, true); // Force reprocess all
         sendStats(profileId);
         return { success: true };
+    });
+
+    // Clear database for a profile (used when changing embedding provider)
+    ipcMain.handle('clear-database', async (_event: IpcMainInvokeEvent, profileId: string) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        
+        if (!profile?.databasePath) {
+            return { success: false, error: 'No database path configured' };
+        }
+
+        try {
+            // Cancel any in-progress sync operations first
+            syncCancelled.set(profileId, true);
+            
+            // If profile state exists, clean it up completely
+            const state = profileStates.get(profileId);
+            if (state) {
+                // Stop syncer if running
+                if (state.syncer) {
+                    state.syncer.stop();
+                    state.syncer = null;
+                }
+                // Close and clear database
+                if (state.database) {
+                    state.database.clearAllData();
+                    state.database.close();
+                    state.database = null;
+                }
+                // Terminate embedding worker and clear service
+                if (state.embeddingService) {
+                    await state.embeddingService.terminate();
+                    state.embeddingService = null;
+                }
+                // Remove the state entirely so it gets recreated fresh
+                profileStates.delete(profileId);
+            }
+            
+            // Clear the cancellation flag after state cleanup
+            syncCancelled.delete(profileId);
+
+            // Delete the database file to ensure clean slate with correct dimensions
+            const fs = require('fs');
+            if (fs.existsSync(profile.databasePath)) {
+                fs.unlinkSync(profile.databasePath);
+                console.log(`[${profileId}] Database file deleted: ${profile.databasePath}`);
+            }
+
+            // Clear persisted token/cost stats for this profile
+            if (appSettings.profileCosts?.[profileId]) {
+                delete appSettings.profileCosts[profileId];
+                store.set('profileCosts', appSettings.profileCosts);
+                console.log(`[${profileId}] Token/cost stats cleared`);
+            }
+
+            return { success: true };
+        } catch (error: any) {
+            console.error(`[${profileId}] Error clearing database:`, error);
+            return { success: false, error: error.message };
+        }
     });
 
     // Get current language
@@ -911,6 +1017,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
     }
 
     const { watchedFolder, databasePath, openAIApiKey, fileExtensions, recursive } = profile;
+    const embeddingProvider = migrateEmbeddingProvider(profile.embeddingProvider);
 
     if (!watchedFolder) {
         return { success: false, error: 'No folder selected' };
@@ -920,8 +1027,9 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
         return { success: false, error: 'No database path selected' };
     }
 
-    if (!openAIApiKey) {
-        return { success: false, error: 'OpenAI API key is required for generating embeddings' };
+    // Only require API key if using OpenAI embeddings
+    if (embeddingProvider === 'openai' && !openAIApiKey) {
+        return { success: false, error: 'OpenAI API key is required when using OpenAI embeddings' };
     }
 
     try {
@@ -947,30 +1055,79 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             profileStates.set(profileId, state);
         }
 
+        // Determine embedding dimension based on provider
+        const embeddingDimension = getEmbeddingDimension(embeddingProvider);
+
         // Initialize database
         if (state.database) {
             state.database.close();
         }
-        state.database = new DatabaseManager(databasePath);
+        state.database = new DatabaseManager(databasePath, embeddingDimension);
 
         // Initialize processor
         state.processor = new ContentProcessor();
 
-        // Initialize embedding service (required for semantic search)
-        state.embeddingService = new EmbeddingService(openAIApiKey);
-        
-        // Validate API key before starting sync
-        console.log(`[${profile.name}] Validating OpenAI API key...`);
-        try {
-            const isValid = await state.embeddingService.validateApiKey();
-            if (!isValid) {
+        // Initialize embedding service
+        if (embeddingProvider === 'openai') {
+            state.embeddingService = new EmbeddingService('openai', openAIApiKey);
+            
+            // Validate API key before starting sync
+            console.log(`[${profile.name}] Validating OpenAI API key...`);
+            try {
+                const isValid = await state.embeddingService.validateApiKey();
+                if (!isValid) {
+                    state.embeddingService = null;
+                    return { success: false, error: 'Invalid OpenAI API key' };
+                }
+                console.log(`[${profile.name}] API key validated successfully`);
+            } catch (error: any) {
                 state.embeddingService = null;
-                return { success: false, error: 'Invalid OpenAI API key' };
+                return { success: false, error: `Failed to validate API key: ${error.message}` };
             }
-            console.log(`[${profile.name}] API key validated successfully`);
-        } catch (error: any) {
-            state.embeddingService = null;
-            return { success: false, error: `Failed to validate API key: ${error.message}` };
+        } else {
+            // Use local embeddings
+            const modelConfig = LOCAL_MODELS[embeddingProvider];
+            console.log(`[${profile.name}] Using local embedding model: ${modelConfig?.name || embeddingProvider}...`);
+            state.embeddingService = new EmbeddingService(embeddingProvider);
+            
+            // Set up download progress callback to notify UI
+            state.embeddingService.setDownloadProgressCallback((progress) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    try {
+                        mainWindow.webContents.send('model-download-progress', {
+                            profileId,
+                            ...progress
+                        });
+                    } catch (err) {
+                        console.error('Error sending download progress:', err);
+                    }
+                }
+            });
+            
+            // Wait for local model to be ready in the background
+            // Don't block - let the sync setup continue
+            const embeddingService = state.embeddingService;
+            embeddingService.validateApiKey().then(() => {
+                console.log(`[${profile.name}] Local embedding model ready`);
+            }).catch(async (error: any) => {
+                console.error(`[${profile.name}] Failed to load local embedding model:`, error);
+                // Stop sync and show error
+                if (state && state.embeddingService === embeddingService) {
+                    await embeddingService.terminate();
+                    state.embeddingService = null;
+                    state.syncer?.stop();
+                    state.syncer = null;
+                    // Notify UI about the error
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('api-key-error', {
+                            profileId,
+                            message: `Failed to load embedding model: ${error.message}`
+                        });
+                    }
+                    sendStats(profileId);
+                    updateTray();
+                }
+            });
         }
 
         // Parse extensions
@@ -1005,11 +1162,19 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
         // Reset sync cancelled flag
         syncCancelled.set(profileId, false);
 
-        // Initial sync
-        await performInitialSync(profileId);
+        // Start initial sync in background (don't block UI)
+        performInitialSync(profileId).then(() => {
+            sendStats(profileId);
+            updateTray();
+        }).catch((error: any) => {
+            console.error(`[${profile.name}] Error during initial sync:`, error);
+            sendStats(profileId);
+            updateTray();
+        });
+
+        // Return immediately so UI can show "Stop Sync" button
         sendStats(profileId);
         updateTray();
-
         return { success: true };
     } catch (error: any) {
         console.error(`[${profile.name}] Error starting syncer:`, error);
@@ -1056,6 +1221,11 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
             return;
         }
 
+        // Re-check after async operation - database might have been cleared
+        if (syncCancelled.get(profileId) || !state.database) {
+            return;
+        }
+
         // Check content hash - skip if content is identical
         const hash = state.processor.generateHash(content);
         if (!forceReprocess) {
@@ -1076,41 +1246,60 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
         state.database.removeChunksForFile(filePath);
 
         // Generate embeddings and insert chunks
-        for (const chunk of chunks) {
+        for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+            const chunk = chunks[chunkIdx];
             let embedding: number[] | null = null;
 
-            if (state.embeddingService) {
+            // Yield to event loop periodically to keep UI responsive (every 2 chunks for local models)
+            if (chunkIdx > 0 && chunkIdx % 2 === 0) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+
+            if (state.embeddingService && !syncCancelled.get(profileId)) {
                 try {
                     const result = await state.embeddingService.generateEmbedding(chunk.content);
                     embedding = result.embedding;
                     
-                    // Track tokens and cost
-                    const tokens = result.tokens;
-                    const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
-                    state.totalTokens += tokens;
-                    state.totalCost += cost;
-                    
-                    // Persist costs
-                    const appSettings = store.store;
-                    if (!appSettings.profileCosts) {
-                        appSettings.profileCosts = {};
+                    // Track tokens and cost (only for OpenAI - local is free)
+                    // Re-check embeddingService in case it was nullified during async operation
+                    if (state.embeddingService && state.embeddingService.getProvider() === 'openai') {
+                        const tokens = result.tokens;
+                        const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
+                        state.totalTokens += tokens;
+                        state.totalCost += cost;
+                        
+                        // Persist costs
+                        const appSettings = store.store;
+                        if (!appSettings.profileCosts) {
+                            appSettings.profileCosts = {};
+                        }
+                        appSettings.profileCosts[profileId] = {
+                            totalTokens: state.totalTokens,
+                            totalCost: state.totalCost
+                        };
+                        store.store = appSettings;
                     }
-                    appSettings.profileCosts[profileId] = {
-                        totalTokens: state.totalTokens,
-                        totalCost: state.totalCost
-                    };
-                    store.store = appSettings;
                 } catch (error) {
                     if (error instanceof InvalidApiKeyError) {
                         console.error(`[${profileId}] Invalid API key detected - stopping sync`);
-                        handleInvalidApiKey(profileId);
+                        await handleInvalidApiKey(profileId);
                         return; // Stop processing this file
                     }
                     console.error(`[${profileId}] Error generating embedding:`, error);
                 }
             }
 
+            // Check if sync was cancelled or database was closed during async operation
+            if (syncCancelled.get(profileId) || !state.database) {
+                return;
+            }
+
             state.database.insertChunk(chunk, embedding);
+        }
+
+        // Final check before updating file info
+        if (syncCancelled.get(profileId) || !state.database) {
+            return;
         }
 
         // Update file info with current timestamp
@@ -1140,36 +1329,55 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
     let skipped = 0;
 
     for (let i = 0; i < files.length; i++) {
-        // Check if sync was cancelled
-        if (syncCancelled.get(profileId)) {
+        // Check if sync was cancelled or database was cleared
+        if (syncCancelled.get(profileId) || !state.database) {
             console.log(`[${profileName}] Sync cancelled`);
             break;
         }
         
         const filePath = files[i];
         
-        // Check if file needs processing before logging
-        const fileInfo = state.database.getFileInfo(filePath);
-        const needsProcessing = forceReprocess || !fileInfo;
-        
-        if (!needsProcessing && fileInfo) {
-            const fs = require('fs');
-            try {
-                const stats = fs.statSync(filePath);
-                if (stats.mtime <= fileInfo.modifiedAt) {
-                    skipped++;
-                    continue; // Skip unchanged files silently
-                }
-            } catch {
-                // Process if we can't stat
+        try {
+            // Get current database reference (defensive copy)
+            const currentDb = state.database;
+            if (!currentDb) {
+                console.log(`[${profileName}] Sync cancelled - database cleared`);
+                break;
             }
+            
+            // Check if file needs processing before logging
+            const fileInfo = currentDb.getFileInfo(filePath);
+            const needsProcessing = forceReprocess || !fileInfo;
+            
+            if (!needsProcessing && fileInfo) {
+                const fs = require('fs');
+                try {
+                    const stats = fs.statSync(filePath);
+                    if (stats.mtime <= fileInfo.modifiedAt) {
+                        skipped++;
+                        continue; // Skip unchanged files silently
+                    }
+                } catch {
+                    // Process if we can't stat
+                }
+            }
+            
+            console.log(`[${profileName}] Processing ${i + 1}/${files.length}: ${filePath}`);
+            await processFile(profileId, filePath, forceReprocess);
+            processed++;
+            // Update stats after each file during initial sync
+            sendStats(profileId);
+            
+            // Yield to event loop to keep UI responsive
+            await new Promise(resolve => setImmediate(resolve));
+        } catch (error: any) {
+            // Handle case where database was cleared during sync
+            if (error?.message?.includes('null') || error?.message?.includes('undefined')) {
+                console.log(`[${profileName}] Sync interrupted - database was cleared`);
+                break;
+            }
+            console.error(`[${profileName}] Error checking file ${filePath}:`, error);
         }
-        
-        console.log(`[${profileName}] Processing ${i + 1}/${files.length}: ${filePath}`);
-        await processFile(profileId, filePath, forceReprocess);
-        processed++;
-        // Update stats after each file during initial sync
-        sendStats(profileId);
     }
     
     if (!syncCancelled.get(profileId)) {
@@ -1201,7 +1409,8 @@ function sendStats(profileId?: string) {
         
         if (profile?.databasePath) {
             try {
-                const db = new DatabaseManager(profile.databasePath);
+                const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
+                const db = new DatabaseManager(profile.databasePath, embeddingDimension);
                 trackedFiles = db.getTrackedFilesCount();
                 totalChunks = db.getTotalChunksCount();
                 db.close();
@@ -1222,7 +1431,8 @@ function sendStats(profileId?: string) {
             trackedFiles,
             totalChunks,
             totalTokens,
-            totalCost
+            totalCost,
+            embeddingProvider: profile?.embeddingProvider || 'local-e5-large'
         };
         
         if (state) {
@@ -1260,7 +1470,8 @@ function sendStats(profileId?: string) {
             
             if (profile.databasePath) {
                 try {
-                    const db = new DatabaseManager(profile.databasePath);
+                    const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
+                    const db = new DatabaseManager(profile.databasePath, embeddingDimension);
                     trackedFiles = db.getTrackedFilesCount();
                     totalChunks = db.getTotalChunksCount();
                     db.close();
@@ -1281,7 +1492,8 @@ function sendStats(profileId?: string) {
                 trackedFiles,
                 totalChunks,
                 totalTokens,
-                totalCost
+                totalCost,
+                embeddingProvider: migrateEmbeddingProvider(profile.embeddingProvider)
             };
         });
         
@@ -1297,7 +1509,7 @@ function sendStats(profileId?: string) {
     updateTray();
 }
 
-function handleInvalidApiKey(profileId: string) {
+async function handleInvalidApiKey(profileId: string) {
     // Cancel sync and stop watching
     syncCancelled.set(profileId, true);
     const state = profileStates.get(profileId);
@@ -1307,8 +1519,11 @@ function handleInvalidApiKey(profileId: string) {
             state.syncer = null;
         }
         
-        // Clear the embedding service
-        state.embeddingService = null;
+        // Terminate embedding worker and clear service
+        if (state.embeddingService) {
+            await state.embeddingService.terminate();
+            state.embeddingService = null;
+        }
     }
     
     // Notify the UI

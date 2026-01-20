@@ -31,7 +31,7 @@
     "delete": "प्रोफ़ाइल हटाएं",
     "deleteConfirm": "क्या आप वाकई इस प्रोफ़ाइल को हटाना चाहते हैं?",
     "settings": "सेटिंग्स",
-    "embeddings": "एम्बेडिंग्स (OpenAI)",
+    "embeddings": "एम्बेडिंग्स",
     "stats": "आंकड़े"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "उपनिर्देशिकाएं देखें",
     "fileExtensions": "फ़ाइल एक्सटेंशन",
     "apiKey": "API कुंजी",
-    "apiKeyRequired": "एम्बेडिंग्स के लिए API कुंजी आवश्यक",
+    "apiKeyRequired": "OpenAI एम्बेडिंग्स के लिए API कुंजी आवश्यक",
     "usesEmbedding": "text-embedding-3-large (3072 आयाम) का उपयोग करता है",
+    "embeddingProvider": "एम्बेडिंग मॉडल",
+    "localMinilm": "MiniLM-L6 (तेज़, ~23MB)",
+    "localE5": "E5 बहुभाषी Base (~440MB)",
+    "localE5Large": "E5 बहुभाषी Large (~1.1GB)",
+    "openaiEmbeddings": "OpenAI API",
+    "free": "मुफ्त",
+    "paid": "सशुल्क",
+    "localEmbeddingInfo": "स्थानीय मॉडल ऑफ़लाइन चलता है, पहले उपयोग पर डाउनलोड होता है",
+    "minilmDescription": "384 आयाम • तेज़ अनुमान • सामान्य उपयोग के लिए अच्छा",
+    "e5Description": "768 आयाम • 100+ भाषाएं • अच्छी गुणवत्ता",
+    "e5LargeDescription": "1024 आयाम • 100+ भाषाएं • सर्वश्रेष्ठ स्थानीय गुणवत्ता",
+    "openaiDescription": "3072 आयाम • API कुंजी आवश्यक • सर्वोत्तम गुणवत्ता",
+    "embeddingProviderChangeWarning": "एम्बेडिंग प्रदाता बदलने के लिए डेटाबेस हटाना और सभी फाइलों को पुनः सिंक करना आवश्यक है। एम्बेडिंग आयाम प्रदाताओं के बीच भिन्न हैं।\n\nक्या आप जारी रखना चाहते हैं?",
+    "syncWillBeStopped": "नोट: वर्तमान सिंक बंद हो जाएगा।",
     "filesTracked": "ट्रैक की गई फ़ाइलें",
     "totalChunks": "कुल चंक्स",
     "totalTokens": "कुल टोकन",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "डेटाबेस ब्राउज़ करें",
     "backToFiles": "← फ़ाइलों पर वापस",
     "noChunksFound": "इस फ़ाइल के लिए कोई चंक नहीं मिला।",
-    "chunks": "चंक्स"
+    "chunks": "चंक्स",
+    "downloadingModel": "मॉडल डाउनलोड हो रहा है",
+    "loadingModel": "मॉडल लोड हो रहा है...",
+    "downloading": "डाउनलोड हो रहा है",
+    "downloaded": "डाउनलोड हो गया"
   }
 }

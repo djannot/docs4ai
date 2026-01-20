@@ -31,7 +31,7 @@
     "delete": "حذف الملف الشخصي",
     "deleteConfirm": "هل أنت متأكد من حذف هذا الملف الشخصي؟",
     "settings": "الإعدادات",
-    "embeddings": "التضمينات (OpenAI)",
+    "embeddings": "التضمينات",
     "stats": "الإحصائيات"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "مراقبة المجلدات الفرعية",
     "fileExtensions": "امتدادات الملفات",
     "apiKey": "مفتاح API",
-    "apiKeyRequired": "مفتاح API مطلوب للتضمينات",
+    "apiKeyRequired": "مفتاح API مطلوب لتضمينات OpenAI",
     "usesEmbedding": "يستخدم text-embedding-3-large (3072 بُعد)",
+    "embeddingProvider": "نموذج التضمينات",
+    "localMinilm": "MiniLM-L6 (سريع، ~23 ميجابايت)",
+    "localE5": "E5 متعدد اللغات Base (~440 ميجابايت)",
+    "localE5Large": "E5 متعدد اللغات Large (~1.1 جيجابايت)",
+    "openaiEmbeddings": "OpenAI API",
+    "free": "مجاني",
+    "paid": "مدفوع",
+    "localEmbeddingInfo": "النموذج المحلي يعمل بدون اتصال، يتم تحميله عند الاستخدام الأول",
+    "minilmDescription": "384 بُعد • استدلال سريع • جيد للاستخدام العام",
+    "e5Description": "768 بُعد • أكثر من 100 لغة • جودة جيدة",
+    "e5LargeDescription": "1024 بُعد • أكثر من 100 لغة • أفضل جودة محلية",
+    "openaiDescription": "3072 بُعد • يتطلب مفتاح API • أفضل جودة",
+    "embeddingProviderChangeWarning": "يتطلب تغيير مزود التضمينات حذف قاعدة البيانات وإعادة مزامنة جميع الملفات. أبعاد التضمين مختلفة بين المزودين.\n\nهل تريد المتابعة؟",
+    "syncWillBeStopped": "ملاحظة: سيتم إيقاف المزامنة الحالية.",
     "filesTracked": "الملفات المتتبعة",
     "totalChunks": "إجمالي الأجزاء",
     "totalTokens": "إجمالي الرموز",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "تصفح قاعدة البيانات",
     "backToFiles": "← العودة إلى الملفات",
     "noChunksFound": "لم يتم العثور على أجزاء لهذا الملف.",
-    "chunks": "أجزاء"
+    "chunks": "أجزاء",
+    "downloadingModel": "جاري تحميل النموذج",
+    "loadingModel": "جاري تحميل النموذج...",
+    "downloading": "جاري التحميل",
+    "downloaded": "تم التحميل"
   }
 }

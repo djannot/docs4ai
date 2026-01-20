@@ -31,7 +31,7 @@
     "delete": "Eliminar perfil",
     "deleteConfirm": "¿Está seguro de que desea eliminar este perfil?",
     "settings": "Configuración",
-    "embeddings": "Embeddings (OpenAI)",
+    "embeddings": "Embeddings",
     "stats": "Estadísticas"
   },
   "mcp": {
@@ -62,8 +62,22 @@
     "watchSubdirectories": "Observar subdirectorios",
     "fileExtensions": "Extensiones de archivo",
     "apiKey": "Clave API",
-    "apiKeyRequired": "Clave API requerida para embeddings",
+    "apiKeyRequired": "Clave API requerida para embeddings de OpenAI",
     "usesEmbedding": "Usa text-embedding-3-large (3072 dimensiones)",
+    "embeddingProvider": "Modelo de embeddings",
+    "localMinilm": "MiniLM-L6 (Rápido, ~23MB)",
+    "localE5": "E5 Multilingüe Base (~440MB)",
+    "localE5Large": "E5 Multilingüe Large (~1.1GB)",
+    "openaiEmbeddings": "API de OpenAI",
+    "free": "Gratis",
+    "paid": "De pago",
+    "localEmbeddingInfo": "El modelo local funciona sin conexión, se descarga en el primer uso",
+    "minilmDescription": "384 dimensiones • Inferencia rápida • Bueno para uso general",
+    "e5Description": "768 dimensiones • 100+ idiomas • Buena calidad",
+    "e5LargeDescription": "1024 dimensiones • 100+ idiomas • Mejor calidad local",
+    "openaiDescription": "3072 dimensiones • Requiere clave API • Mejor calidad",
+    "embeddingProviderChangeWarning": "Cambiar el proveedor de embeddings requiere eliminar la base de datos y resincronizar todos los archivos. Las dimensiones de embedding son diferentes entre proveedores.\n\n¿Desea continuar?",
+    "syncWillBeStopped": "Nota: La sincronización actual se detendrá.",
     "filesTracked": "Archivos rastreados",
     "totalChunks": "Total de fragmentos",
     "totalTokens": "Total de tokens",
@@ -87,6 +101,10 @@
     "browseDatabaseTitle": "Explorar base de datos",
     "backToFiles": "← Volver a archivos",
     "noChunksFound": "No se encontraron fragmentos para este archivo.",
-    "chunks": "fragmentos"
+    "chunks": "fragmentos",
+    "downloadingModel": "Descargando modelo",
+    "loadingModel": "Cargando modelo...",
+    "downloading": "Descargando",
+    "downloaded": "Descargado"
   }
 }

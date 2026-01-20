@@ -2,8 +2,8 @@ import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
-import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
+import { EmbeddingService, EmbeddingProvider } from './embeddings';
 
 interface QueryResult {
     chunk_id: string;
@@ -37,6 +37,8 @@ export class McpServer {
     private server: Server | null = null;
     private dbPath: string | null = null;
     private openaiApiKey: string | null = null;
+    private embeddingProvider: EmbeddingProvider = 'local-e5-large';
+    private embeddingService: EmbeddingService | null = null;
     private port: number;
     private sessions: Map<string, boolean> = new Map();
     private onCostUpdate: ((tokens: number, cost: number) => void) | null = null;
@@ -48,10 +50,30 @@ export class McpServer {
         this.setupRoutes();
     }
 
+    private async getEmbeddingService(): Promise<EmbeddingService> {
+        if (this.embeddingService) {
+            return this.embeddingService;
+        }
+
+        if (this.embeddingProvider === 'openai' && this.openaiApiKey) {
+            this.embeddingService = new EmbeddingService('openai', this.openaiApiKey);
+        } else {
+            // Use the specified local model
+            this.embeddingService = new EmbeddingService(this.embeddingProvider);
+            await this.embeddingService.validateApiKey(); // Ensures model is loaded
+        }
+
+        return this.embeddingService;
+    }
+
     private setupRoutes() {
         // Health check
         this.app.get('/health', (_req: Request, res: Response) => {
-            res.json({ status: 'ok', database: this.dbPath ? 'connected' : 'not connected' });
+            res.json({ 
+                status: 'ok', 
+                database: this.dbPath ? 'connected' : 'not connected',
+                embeddingProvider: this.embeddingProvider
+            });
         });
 
         // MCP-style tool listing
@@ -95,8 +117,9 @@ export class McpServer {
                     return;
                 }
 
-                if (!this.openaiApiKey) {
-                    res.status(503).json({ error: 'OpenAI API key not configured. Please add your API key in the app.' });
+                // Check if we need API key (only for OpenAI)
+                if (this.embeddingProvider === 'openai' && !this.openaiApiKey) {
+                    res.status(503).json({ error: 'OpenAI API key not configured. Please add your API key in the app or switch to local embeddings.' });
                     return;
                 }
 
@@ -209,12 +232,25 @@ export class McpServer {
                         const { name, arguments: args } = params || {};
                         
                         if (name === 'query_documents') {
-                            if (!this.dbPath || !this.openaiApiKey) {
+                            if (!this.dbPath) {
                                 res.json({
                                     jsonrpc: '2.0',
                                     id,
                                     result: {
-                                        content: [{ type: 'text', text: 'Error: Database or API key not configured in Docs4ai app. Please configure them in the app settings.' }],
+                                        content: [{ type: 'text', text: 'Error: Database not configured in Docs4ai app. Please configure it in the app settings.' }],
+                                        isError: true
+                                    }
+                                });
+                                return;
+                            }
+
+                            // Check if we need API key (only for OpenAI)
+                            if (this.embeddingProvider === 'openai' && !this.openaiApiKey) {
+                                res.json({
+                                    jsonrpc: '2.0',
+                                    id,
+                                    result: {
+                                        content: [{ type: 'text', text: 'Error: OpenAI API key not configured. Please add your API key in the app or switch to local embeddings.' }],
                                         isError: true
                                     }
                                 });
@@ -387,22 +423,21 @@ export class McpServer {
     }
 
     private async queryDatabase(queryText: string, limit: number): Promise<QueryResult[]> {
-        if (!this.dbPath || !this.openaiApiKey) {
-            throw new Error('Database or API key not configured');
+        if (!this.dbPath) {
+            throw new Error('Database not configured');
         }
 
-        // Generate embedding for query
-        const openai = new OpenAI({ apiKey: this.openaiApiKey });
-        const embeddingResponse = await openai.embeddings.create({
-            model: 'text-embedding-3-large',
-            input: queryText
-        });
-        const queryEmbedding = embeddingResponse.data[0].embedding;
+        // Get the embedding service
+        const embeddingService = await this.getEmbeddingService();
         
-        // Track tokens and cost for query
-        const tokens = embeddingResponse.usage?.total_tokens || 0;
-        const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
-        if (this.onCostUpdate) {
+        // Generate embedding for query
+        const result = await embeddingService.generateEmbedding(queryText);
+        const queryEmbedding = result.embedding;
+        
+        // Track tokens and cost for query (only for OpenAI)
+        if (this.embeddingProvider === 'openai' && this.onCostUpdate) {
+            const tokens = result.tokens;
+            const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
             this.onCostUpdate(tokens, cost);
         }
 
@@ -491,6 +526,17 @@ export class McpServer {
 
     setApiKey(apiKey: string | null) {
         this.openaiApiKey = apiKey;
+        // Reset embedding service so it gets recreated with new key
+        if (this.embeddingProvider === 'openai') {
+            this.embeddingService = null;
+        }
+    }
+
+    setEmbeddingProvider(provider: EmbeddingProvider) {
+        this.embeddingProvider = provider;
+        // Reset embedding service so it gets recreated with new provider
+        this.embeddingService = null;
+        console.log(`MCP Server: Embedding provider set to ${provider}`);
     }
 
     setOnCostUpdate(callback: (tokens: number, cost: number) => void) {
@@ -501,7 +547,7 @@ export class McpServer {
         return new Promise((resolve, reject) => {
             try {
                 const server = this.app.listen(this.port, () => {
-                    console.log(`MCP Server running on http://localhost:${this.port}`);
+                    console.log(`MCP Server running on http://localhost:${this.port} (embeddings: ${this.embeddingProvider})`);
                     resolve();
                 });
                 
@@ -519,7 +565,13 @@ export class McpServer {
         });
     }
 
-    stop(): Promise<void> {
+    async stop(): Promise<void> {
+        // Terminate embedding service worker if it exists
+        if (this.embeddingService) {
+            await this.embeddingService.terminate();
+            this.embeddingService = null;
+        }
+        
         return new Promise((resolve) => {
             if (this.server) {
                 this.server.close(() => {
