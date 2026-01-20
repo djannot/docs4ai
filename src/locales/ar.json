@@ -32,12 +32,7 @@
     "deleteConfirm": "هل أنت متأكد من حذف هذا الملف الشخصي؟",
     "settings": "الإعدادات",
     "embeddings": "التضمينات (OpenAI)",
-    "stats": {
-      "trackedFiles": "الملفات المتتبعة",
-      "totalChunks": "إجمالي الأجزاء"
-    "totalTokens": "إجمالي الرموز",
-    "totalCost": "التكلفة الإجمالية",
-    }
+    "stats": "الإحصائيات"
   },
   "mcp": {
     "title": "خادم MCP",

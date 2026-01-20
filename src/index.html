@@ -1446,7 +1446,8 @@
             renderTabs();
             updateOverallStatus();
             
-            if (activeProfileId) {
+            // Only update active profile if translations are loaded
+            if (activeProfileId && Object.keys(translations).length > 0) {
                 const stats = profileStats.get(activeProfileId);
                 if (stats) {
                     updateStats(stats);
@@ -1543,6 +1544,48 @@
         window.api.onSwitchProfile(async (profileId) => {
             await switchProfile(profileId);
         });
+
+        // Function to register language changed listener
+        function registerLanguageChangedListener() {
+            if (!window.api || !window.api.onLanguageChanged) {
+                return false;
+            }
+            
+            try {
+                window.api.onLanguageChanged(async (locale) => {
+                    currentLanguage = locale;
+                    const langSelect = document.getElementById('languageSelect');
+                    if (langSelect) {
+                        langSelect.value = locale;
+                    }
+                    const loaded = await loadTranslations(locale);
+                    if (loaded) {
+                        updateUI();
+                    }
+                });
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        // Set up language selector event listener
+        function setupLanguageSelector() {
+            const langSelect = document.getElementById('languageSelect');
+            if (langSelect) {
+                // Remove any existing listeners by cloning the element
+                const newSelect = langSelect.cloneNode(true);
+                langSelect.parentNode.replaceChild(newSelect, langSelect);
+                
+                // Add the event listener to the new element
+                const newLangSelect = document.getElementById('languageSelect');
+                if (newLangSelect) {
+                    newLangSelect.addEventListener('change', (e) => {
+                        changeLanguage(e.target.value);
+                    });
+                }
+            }
+        }
 
         // MCP Server functions
         async function toggleMcpServer() {
@@ -2039,7 +2082,6 @@
                 translations = await window.api.getTranslations(locale);
                 return true;
             } catch (error) {
-                console.error('[i18n] Error loading translations:', error);
                 return false;
             }
         }
@@ -2047,44 +2089,48 @@
         async function initLanguage() {
             try {
                 currentLanguage = await window.api.getLanguage();
-                document.getElementById('languageSelect').value = currentLanguage;
-                await loadTranslations(currentLanguage);
-                updateUI();
+                const langSelect = document.getElementById('languageSelect');
+                if (langSelect) {
+                    langSelect.value = currentLanguage;
+                }
+                const loaded = await loadTranslations(currentLanguage);
+                if (loaded) {
+                    updateUI();
+                }
             } catch (error) {
-                console.error('Error loading language:', error);
+                // Silently handle errors during initialization
             }
         }
 
         async function changeLanguage(locale) {
             try {
                 const result = await window.api.setLanguage(locale);
-                if (result.success) {
+                
+                if (result && result.success) {
+                    // The main process will send a 'language-changed' event
+                    // which will trigger onLanguageChanged handler
+                    // But we also update immediately here for responsiveness
                     currentLanguage = locale;
-                    await loadTranslations(locale);
-                    updateUI(); // Update all UI elements
+                    const loaded = await loadTranslations(locale);
+                    if (loaded) {
+                        updateUI(); // Update all UI elements
+                    }
                 } else {
-                    alert(t('common.error') + ': ' + (result.error || t('common.unknownError', {})));
+                    const errorMsg = result?.error || 'Unknown error';
+                    alert(t('common.error') + ': ' + errorMsg);
                 }
             } catch (error) {
-                console.error('Error changing language:', error);
-                alert(t('common.error') + ': ' + t('common.errorChangingLanguage', {}));
+                alert(t('common.error') + ': ' + (error.message || t('common.errorChangingLanguage')));
             }
         }
-
-        // Listen for language changes from main process
-        window.api.onLanguageChanged(async (locale) => {
-            currentLanguage = locale;
-            document.getElementById('languageSelect').value = locale;
-            await loadTranslations(locale);
-            updateUI();
-        });
-
-        document.getElementById('languageSelect').addEventListener('change', (e) => {
-            changeLanguage(e.target.value);
-        });
         
         // Update all UI elements with translations
         function updateUI() {
+            // Don't update if translations aren't loaded yet
+            if (Object.keys(translations).length === 0) {
+                return;
+            }
+            
             // Update header status
             updateOverallStatus();
             
@@ -2115,9 +2161,35 @@
             }
         }
 
-        // Initialize
-        initLanguage();
-        loadProfiles();
+        // Initialize - set up event listeners first, then load language, then profiles
+        // Wait for window.api to be available before setting up listeners
+        function initializeApp() {
+            if (typeof window.api === 'undefined') {
+                setTimeout(initializeApp, 100);
+                return;
+            }
+            
+            // Register language changed listener
+            const listenerRegistered = registerLanguageChangedListener();
+            if (!listenerRegistered) {
+                setTimeout(() => {
+                    registerLanguageChangedListener();
+                }, 500);
+            }
+            
+            setupLanguageSelector(); // Set up language selector event listener
+            initLanguage().then(() => {
+                // Wait for translations to load before loading profiles
+                loadProfiles();
+            });
+        }
+        
+        // Start initialization
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
     </script>
 </body>
 </html>

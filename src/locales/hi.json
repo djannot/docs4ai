@@ -32,12 +32,7 @@
     "deleteConfirm": "क्या आप वाकई इस प्रोफ़ाइल को हटाना चाहते हैं?",
     "settings": "सेटिंग्स",
     "embeddings": "एम्बेडिंग्स (OpenAI)",
-    "stats": {
-      "trackedFiles": "ट्रैक की गई फ़ाइलें",
-      "totalChunks": "कुल चंक्स"
-    "totalTokens": "कुल टोकन",
-    "totalCost": "कुल लागत",
-    }
+    "stats": "आंकड़े"
   },
   "mcp": {
     "title": "MCP सर्वर",

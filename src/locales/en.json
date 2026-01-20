@@ -32,7 +32,8 @@
     "deleteConfirm": "Are you sure you want to delete this profile?",
     "settings": "Settings",
     "embeddings": "Embeddings (OpenAI)",
-    "stats": {
+    "stats": "Statistics",
+    "statsDetails": {
       "trackedFiles": "Tracked Files",
       "totalChunks": "Total Chunks"
     }

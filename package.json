@@ -6,17 +6,19 @@
   "scripts": {
     "build": "tsc && npm run copy-locales",
     "copy-locales": "mkdir -p dist/locales && cp -r src/locales/*.json dist/locales/",
-    "postinstall": "npx @electron/rebuild",
-    "start": "npm run build && electron .",
-    "dev": "tsc && electron .",
-    "rebuild": "npx @electron/rebuild",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "start": "npm run rebuild:electron && npm run build && electron .",
+    "dev": "npm run rebuild:electron && tsc && electron .",
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win",
     "package:linux": "npm run build && electron-builder --linux",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test": "npm run rebuild:node && jest",
+    "test:watch": "npm run rebuild:node && jest --watch",
+    "test:coverage": "npm run rebuild:node && jest --coverage"
   },
   "build": {
     "appId": "com.docs4ai.app",

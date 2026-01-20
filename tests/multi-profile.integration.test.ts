@@ -265,8 +265,8 @@ Key metrics to track:
           const chunks = profile1Processor!.chunkContent(content, filePath);
           for (const chunk of chunks) {
             if (USE_REAL_API) {
-              const embedding = await profile1Embedding!.generateEmbedding(chunk.content);
-              profile1Database!.insertChunk(chunk, embedding);
+              const result = await profile1Embedding!.generateEmbedding(chunk.content);
+              profile1Database!.insertChunk(chunk, result.embedding);
             } else {
               // Use zero vector for testing without API
               const embedding = new Array(3072).fill(0);
@@ -283,8 +283,8 @@ Key metrics to track:
           const chunks = profile1Processor!.chunkContent(content, filePath);
           for (const chunk of chunks) {
             if (USE_REAL_API) {
-              const embedding = await profile1Embedding!.generateEmbedding(chunk.content);
-              profile1Database!.insertChunk(chunk, embedding);
+              const result = await profile1Embedding!.generateEmbedding(chunk.content);
+              profile1Database!.insertChunk(chunk, result.embedding);
             } else {
               const embedding = new Array(3072).fill(0);
               profile1Database!.insertChunk(chunk, embedding);
@@ -306,8 +306,8 @@ Key metrics to track:
         const chunks = profile1Processor!.chunkContent(content, filePath);
         for (const chunk of chunks) {
           if (USE_REAL_API) {
-            const embedding = await profile1Embedding!.generateEmbedding(chunk.content);
-            profile1Database!.insertChunk(chunk, embedding);
+            const result = await profile1Embedding!.generateEmbedding(chunk.content);
+            profile1Database!.insertChunk(chunk, result.embedding);
           } else {
             const embedding = new Array(3072).fill(0);
             profile1Database!.insertChunk(chunk, embedding);
@@ -337,8 +337,8 @@ Key metrics to track:
           const chunks = profile2Processor!.chunkContent(content, filePath);
           for (const chunk of chunks) {
             if (USE_REAL_API) {
-              const embedding = await profile2Embedding!.generateEmbedding(chunk.content);
-              profile2Database!.insertChunk(chunk, embedding);
+              const result = await profile2Embedding!.generateEmbedding(chunk.content);
+              profile2Database!.insertChunk(chunk, result.embedding);
             } else {
               const embedding = new Array(3072).fill(0);
               profile2Database!.insertChunk(chunk, embedding);
@@ -353,8 +353,8 @@ Key metrics to track:
           const chunks = profile2Processor!.chunkContent(content, filePath);
           for (const chunk of chunks) {
             if (USE_REAL_API) {
-              const embedding = await profile2Embedding!.generateEmbedding(chunk.content);
-              profile2Database!.insertChunk(chunk, embedding);
+              const result = await profile2Embedding!.generateEmbedding(chunk.content);
+              profile2Database!.insertChunk(chunk, result.embedding);
             } else {
               const embedding = new Array(3072).fill(0);
               profile2Database!.insertChunk(chunk, embedding);
@@ -375,8 +375,8 @@ Key metrics to track:
         const chunks = profile2Processor!.chunkContent(content, filePath);
         for (const chunk of chunks) {
           if (USE_REAL_API) {
-            const embedding = await profile2Embedding!.generateEmbedding(chunk.content);
-            profile2Database!.insertChunk(chunk, embedding);
+            const result = await profile2Embedding!.generateEmbedding(chunk.content);
+            profile2Database!.insertChunk(chunk, result.embedding);
           } else {
             const embedding = new Array(3072).fill(0);
             profile2Database!.insertChunk(chunk, embedding);

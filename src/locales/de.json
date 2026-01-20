@@ -32,12 +32,7 @@
     "deleteConfirm": "Sind Sie sicher, dass Sie dieses Profil löschen möchten?",
     "settings": "Einstellungen",
     "embeddings": "Einbettungen (OpenAI)",
-    "stats": {
-      "trackedFiles": "Verfolgte Dateien",
-      "totalChunks": "Gesamt-Chunks"
-    "totalTokens": "Gesamt-Tokens",
-    "totalCost": "Gesamtkosten",
-    }
+    "stats": "Statistiken"
   },
   "mcp": {
     "title": "MCP-Server",

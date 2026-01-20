@@ -770,15 +770,57 @@ function setupIpcHandlers() {
     // Get all tracked files with info for a profile
     ipcMain.handle('get-files', (_event: IpcMainInvokeEvent, profileId: string) => {
         const state = profileStates.get(profileId);
-        if (!state || !state.database) return [];
-        return state.database.getAllTrackedFilesWithInfo();
+        
+        // If state exists and database is initialized, use it
+        if (state?.database) {
+            return state.database.getAllTrackedFilesWithInfo();
+        }
+        
+        // Otherwise, try to open database directly from profile's databasePath
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        
+        if (!profile?.databasePath) {
+            return [];
+        }
+        
+        try {
+            const db = new DatabaseManager(profile.databasePath);
+            const files = db.getAllTrackedFilesWithInfo();
+            db.close();
+            return files;
+        } catch (error) {
+            // Database might not exist yet or might be locked
+            return [];
+        }
     });
 
     // Get chunks for a specific file in a profile
     ipcMain.handle('get-chunks', (_event: IpcMainInvokeEvent, profileId: string, filePath: string) => {
         const state = profileStates.get(profileId);
-        if (!state || !state.database) return [];
-        return state.database.getChunksForFile(filePath);
+        
+        // If state exists and database is initialized, use it
+        if (state?.database) {
+            return state.database.getChunksForFile(filePath);
+        }
+        
+        // Otherwise, try to open database directly from profile's databasePath
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        
+        if (!profile?.databasePath) {
+            return [];
+        }
+        
+        try {
+            const db = new DatabaseManager(profile.databasePath);
+            const chunks = db.getChunksForFile(filePath);
+            db.close();
+            return chunks;
+        } catch (error) {
+            // Database might not exist yet or might be locked
+            return [];
+        }
     });
 
     // Start watching a profile
@@ -854,7 +896,6 @@ function setupIpcHandlers() {
             
             return { success: true, language: locale };
         } catch (error: any) {
-            console.error('[i18n] Error changing language:', error);
             return { success: false, error: error.message };
         }
     });
@@ -1327,10 +1368,13 @@ app.whenReady().then(async () => {
     createTray();
     setupIpcHandlers();
     
-    // Send initial stats for all profiles after window is ready
+    // Send initial stats for all profiles after window is ready and translations are loaded
     if (mainWindow) {
         mainWindow.webContents.once('did-finish-load', () => {
-            sendStats(); // Send stats for all profiles
+            // Wait a bit for translations to load in renderer before sending stats
+            setTimeout(() => {
+                sendStats(); // Send stats for all profiles
+            }, 500);
         });
     }
 

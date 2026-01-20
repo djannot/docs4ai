@@ -32,12 +32,7 @@
     "deleteConfirm": "您确定要删除此配置文件吗？",
     "settings": "设置",
     "embeddings": "嵌入 (OpenAI)",
-    "stats": {
-      "trackedFiles": "跟踪的文件",
-      "totalChunks": "总块数"
-    "totalTokens": "总令牌数",
-    "totalCost": "总成本",
-    }
+    "stats": "统计"
   },
   "mcp": {
     "title": "MCP 服务器",
