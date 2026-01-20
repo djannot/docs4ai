@@ -351,7 +351,8 @@ export class ContentProcessor {
                 const level = match ? match[1].length : 1;
                 const headingText = line
                     .replace(/^#+\s*/, '')
-                    .replace(/\[.*?\]\(#[^)]*\)/g, '')
+                    .replace(/\[.*?\]\(#[^)]*\)/g, '')  // Remove [text](#anchor) patterns
+                    .replace(/\[\]\(#[^)]*\)/g, '')     // Remove [](#anchor) patterns
                     .trim();
 
                 const currentTokens = this.tokenize(buffer.trim()).length;
