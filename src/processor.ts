@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import TurndownService from 'turndown';
+import sanitizeHtml from 'sanitize-html';
 
 export interface DocumentChunk {
     chunkId: string;
@@ -17,6 +19,145 @@ export class ContentProcessor {
     private maxTokens = 1000;
     private minTokens = 150;
     private overlapPercent = 0.1;
+    private turndownService: TurndownService;
+
+    constructor() {
+        this.turndownService = new TurndownService({
+            codeBlockStyle: 'fenced',
+            headingStyle: 'atx'
+        });
+        this.setupTurndownRules();
+    }
+
+    private setupTurndownRules(): void {
+        // Rule for code blocks - preserve formatting and detect language
+        this.turndownService.addRule('codeBlocks', {
+            filter: (node: Node): boolean => node.nodeName === 'PRE',
+            replacement: (content: string, node: Node): string => {
+                const htmlNode = node as HTMLElement;
+                const code = htmlNode.querySelector('code');
+
+                let codeContent: string;
+                if (code) {
+                    codeContent = code.textContent || '';
+                } else {
+                    codeContent = htmlNode.textContent || '';
+                }
+
+                // Remove common indentation from all lines
+                const lines = codeContent.split('\n');
+                let minIndent = Infinity;
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    const leadingWhitespace = line.match(/^\s*/)?.[0] || '';
+                    minIndent = Math.min(minIndent, leadingWhitespace.length);
+                }
+
+                const cleanedLines = lines.map(line => {
+                    return line.substring(minIndent === Infinity ? 0 : minIndent);
+                });
+
+                let cleanContent = cleanedLines.join('\n');
+                cleanContent = cleanContent.replace(/^\s+|\s+$/g, '');
+                cleanContent = cleanContent.replace(/\n{2,}/g, '\n');
+
+                return `\n\`\`\`\n${cleanContent}\n\`\`\`\n`;
+            }
+        });
+
+        // Rule for table cells - handle paragraphs inside cells and escape pipes
+        this.turndownService.addRule('tableCell', {
+            filter: ['th', 'td'],
+            replacement: (content: string, node: Node): string => {
+                const htmlNode = node as HTMLElement;
+
+                let cellContent = '';
+                if (htmlNode.querySelector('p')) {
+                    cellContent = Array.from(htmlNode.querySelectorAll('p'))
+                        .map(p => p.textContent || '')
+                        .join(' ')
+                        .trim();
+                } else {
+                    cellContent = content.trim();
+                }
+
+                return ` ${cellContent.replace(/\|/g, '\\|')} |`;
+            }
+        });
+
+        // Rule for table rows - add separator for header rows
+        this.turndownService.addRule('tableRow', {
+            filter: 'tr',
+            replacement: (content: string, node: Node): string => {
+                const htmlNode = node as HTMLTableRowElement;
+                const cells = Array.from(htmlNode.cells);
+                const isHeader = htmlNode.parentNode?.nodeName === 'THEAD';
+
+                let output = '|' + content.trimEnd();
+
+                if (isHeader) {
+                    const separator = cells.map(() => '---').join(' | ');
+                    output += '\n|' + separator + '|';
+                }
+
+                if (!isHeader || !htmlNode.nextElementSibling) {
+                    output += '\n';
+                }
+
+                return output;
+            }
+        });
+
+        // Rule for tables - clean up whitespace
+        this.turndownService.addRule('table', {
+            filter: 'table',
+            replacement: (content: string): string => {
+                return '\n' + content.replace(/\n+/g, '\n').trim() + '\n';
+            }
+        });
+
+        // Rule for empty table cells
+        this.turndownService.addRule('preserveTableWhitespace', {
+            filter: (node: Node): boolean => {
+                return (
+                    (node.nodeName === 'TD' || node.nodeName === 'TH') &&
+                    (node.textContent?.trim().length === 0)
+                );
+            },
+            replacement: (): string => {
+                return ' |';
+            }
+        });
+    }
+
+    /**
+     * Convert HTML to Markdown using TurndownService with sanitization
+     */
+    convertHtmlToMarkdown(html: string): string {
+        if (!html || !html.trim()) {
+            return '';
+        }
+
+        // Sanitize the HTML first to remove scripts, styles, and unwanted tags
+        const cleanHtml = sanitizeHtml(html, {
+            allowedTags: [
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol',
+                'li', 'b', 'i', 'strong', 'em', 'code', 'pre',
+                'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                'blockquote', 'br'
+            ],
+            allowedAttributes: {
+                'a': ['href'],
+                'pre': ['class', 'data-language'],
+                'code': ['class', 'data-language'],
+                'div': ['class'],
+                'span': ['class']
+            }
+        });
+
+        // Convert to markdown using TurndownService
+        return this.turndownService.turndown(cleanHtml).trim();
+    }
 
     async readFile(filePath: string): Promise<string | null> {
         const ext = path.extname(filePath).toLowerCase();
@@ -32,7 +173,7 @@ export class ContentProcessor {
                 case '.html':
                 case '.htm':
                     const html = fs.readFileSync(filePath, 'utf-8');
-                    return this.stripHtml(html);
+                    return this.convertHtmlToMarkdown(html);
                 default:
                     return fs.readFileSync(filePath, 'utf-8');
             }
@@ -98,8 +239,8 @@ export class ContentProcessor {
             // Create content with filename as title
             let content = `# ${path.basename(filePath, '.docx')}\n\n`;
             
-            // Strip HTML to get plain text
-            content += this.stripHtml(html);
+            // Convert HTML to Markdown for better formatting
+            content += this.convertHtmlToMarkdown(html);
             
             // Clean up excessive line breaks
             content = content.replace(/\n{3,}/g, '\n\n').trim();
