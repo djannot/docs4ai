@@ -8,7 +8,7 @@ A native desktop application that watches a folder and automatically syncs it wi
 - **Incremental sync** - Only processes changed files based on modification time and content hash
 - **sqlite-vec integration** - Proper vec0 virtual table for vector similarity search
 - **Flexible embeddings** - Choose between local models (free) or OpenAI (paid)
-  - Local: MiniLM (384d), E5 (384d), E5-Large (1024d)
+  - Local: MiniLM (384d), E5 (768d), E5-Large (1024d)
   - OpenAI: text-embedding-3-large (3072d)
 - **Cross-platform** - Runs natively on Mac, Windows, and Linux
 - **Menu bar/system tray** - Status indicator with sync state
@@ -108,9 +108,9 @@ Built applications are output to the `release/` directory.
    - **File Extensions** - Check the boxes for file types you want to process
    - **Recursive** - Enable to watch subdirectories
    - **Embedding Provider** - Choose between:
-     - **Local MiniLM** - Fast, small model (384 dimensions, ~120MB)
-     - **Local E5** - Balanced model (384 dimensions, ~130MB)
-     - **Local E5-Large** - Best quality local model (1024 dimensions, ~400MB) - **Recommended**
+     - **Local MiniLM** - Fast, small model (384 dimensions, ~23MB)
+     - **Local E5** - Balanced model (768 dimensions, ~440MB)
+     - **Local E5-Large** - Best quality local model (1024 dimensions, ~1.1GB) - **Recommended**
      - **OpenAI** - Highest quality, requires API key (3072 dimensions, paid)
    - **API Key** (OpenAI only) - Enter your OpenAI API key
 5. **Click "Start Syncing"** - The app syncs and monitors for changes
@@ -193,7 +193,7 @@ Creates a proper `vec0` virtual table compatible with sqlite-vec. Vector dimensi
 
 ```sql
 CREATE VIRTUAL TABLE vec_items USING vec0(
-    embedding FLOAT[dimension],  -- 384 (MiniLM/E5), 1024 (E5-Large), or 3072 (OpenAI)
+    embedding FLOAT[dimension],  -- 384 (MiniLM), 768 (E5), 1024 (E5-Large), or 3072 (OpenAI)
     version TEXT,
     heading_hierarchy TEXT,
     section TEXT,
@@ -236,9 +236,9 @@ Docs4ai supports multiple embedding providers:
 
 | Model | Dimensions | Size | Speed | Quality | Best For |
 |-------|------------|------|-------|---------|----------|
-| **MiniLM** | 384 | ~120MB | Fast | Good | Quick testing, limited resources |
-| **E5** | 384 | ~130MB | Fast | Better | General use, good balance |
-| **E5-Large** | 1024 | ~400MB | Medium | Best | Production use, highest quality *(Recommended)* |
+| **MiniLM** | 384 | ~23MB | Fast | Good | Quick testing, limited resources |
+| **E5** | 768 | ~440MB | Fast | Better | General use, good balance |
+| **E5-Large** | 1024 | ~1.1GB | Medium | Best | Production use, highest quality *(Recommended)* |
 
 **Advantages:**
 - 100% private - data never leaves your machine
@@ -248,7 +248,7 @@ Docs4ai supports multiple embedding providers:
 
 **Disadvantages:**
 - Lower quality than OpenAI (especially for complex queries)
-- Requires disk space for models
+- Requires disk space for models (~23MB to 1.1GB per model)
 - First-time model download required
 
 ### OpenAI (Paid, Cloud-based)
@@ -305,7 +305,7 @@ npm install officeparser    # For .pptx, .rtf, .odt files
 ### Local embedding models not downloading
 Local models download automatically on first use. Ensure you have:
 - Stable internet connection
-- Sufficient disk space (~120MB to 400MB per model)
+- Sufficient disk space (~23MB to 1.1GB per model)
 - Write permissions in the app directory
 
 If downloads fail, try:
