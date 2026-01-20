@@ -249,14 +249,14 @@
 
         .extensions-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 8px;
             margin-top: 8px;
         }
 
         .extension-checkbox {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 6px;
             padding: 8px 10px;
             background: #fafafa;
@@ -265,7 +265,7 @@
             cursor: pointer;
             transition: all 0.2s;
             font-size: 13px;
-            min-height: 38px;
+            height: 38px;
         }
 
         .extension-checkbox:hover {
@@ -277,6 +277,8 @@
             width: 16px;
             height: 16px;
             cursor: pointer;
+            flex-shrink: 0;
+            margin-top: 2px;
         }
 
         .extension-checkbox.checked {
@@ -288,6 +290,10 @@
             cursor: pointer;
             user-select: none;
             flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            line-height: 20px;
         }
 
         .extension-category {
@@ -1366,11 +1372,15 @@
         function debouncedSaveProfileSettings(profileId) {
             // Clear existing timer for this profile
             if (saveSettingsTimers.has(profileId)) {
+                console.log('[DEBUG] Clearing existing timer for profile:', profileId);
                 clearTimeout(saveSettingsTimers.get(profileId));
             }
 
+            console.log('[DEBUG] Setting 500ms debounce timer for profile:', profileId);
+
             // Set new timer - save after 500ms of no changes
             const timer = setTimeout(() => {
+                console.log('[DEBUG] Debounce timer fired - saving profile settings:', profileId);
                 saveProfileSettings(profileId);
                 saveSettingsTimers.delete(profileId);
             }, 500);
