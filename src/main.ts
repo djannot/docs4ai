@@ -421,7 +421,7 @@ function setupIpcHandlers() {
                 watchedFolder: '',
                 databasePath: '',
                 openAIApiKey: '',
-                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx',
+                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx,.pptx,.rtf,.odt',
                 recursive: true,
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
@@ -1076,6 +1076,13 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
 
         // Initialize processor
         state.processor = new ContentProcessor();
+
+        // Terminate existing embedding service if any (cleanup from previous run)
+        if (state.embeddingService) {
+            console.log(`[${profile.name}] Terminating existing embedding service...`);
+            await state.embeddingService.terminate();
+            state.embeddingService = null;
+        }
 
         // Initialize embedding service
         if (embeddingProvider === 'openai') {

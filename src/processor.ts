@@ -170,6 +170,12 @@ export class ContentProcessor {
                     return await this.readDoc(filePath);
                 case '.docx':
                     return await this.readDocx(filePath);
+                case '.pptx':
+                    return await this.readPptx(filePath);
+                case '.rtf':
+                    return await this.readRtf(filePath);
+                case '.odt':
+                    return await this.readOdt(filePath);
                 case '.html':
                 case '.htm':
                     const html = fs.readFileSync(filePath, 'utf-8');
@@ -250,6 +256,63 @@ export class ContentProcessor {
             if (error.code === 'MODULE_NOT_FOUND') {
                 console.warn(`DOCX parsing not available for ${filePath}. Install mammoth for DOCX support.`);
                 return `# ${path.basename(filePath, '.docx')}\n\n[DOCX content - install mammoth for extraction]`;
+            }
+            throw error;
+        }
+    }
+
+    private async readPptx(filePath: string): Promise<string> {
+        try {
+            const officeparser = require('officeparser');
+            const result = await officeparser.parseOfficeAsync(filePath);
+
+            // Create content with filename as title
+            let content = `# ${path.basename(filePath, '.pptx')}\n\n`;
+            content += result.trim();
+
+            return content;
+        } catch (error: any) {
+            if (error.code === 'MODULE_NOT_FOUND') {
+                console.warn(`PPTX parsing not available for ${filePath}. Install officeparser for PPTX support.`);
+                return `# ${path.basename(filePath, '.pptx')}\n\n[PPTX content - install officeparser for extraction]`;
+            }
+            throw error;
+        }
+    }
+
+    private async readRtf(filePath: string): Promise<string> {
+        try {
+            const officeparser = require('officeparser');
+            const result = await officeparser.parseOfficeAsync(filePath);
+
+            // Create content with filename as title
+            let content = `# ${path.basename(filePath, '.rtf')}\n\n`;
+            content += result.trim();
+
+            return content;
+        } catch (error: any) {
+            if (error.code === 'MODULE_NOT_FOUND') {
+                console.warn(`RTF parsing not available for ${filePath}. Install officeparser for RTF support.`);
+                return `# ${path.basename(filePath, '.rtf')}\n\n[RTF content - install officeparser for extraction]`;
+            }
+            throw error;
+        }
+    }
+
+    private async readOdt(filePath: string): Promise<string> {
+        try {
+            const officeparser = require('officeparser');
+            const result = await officeparser.parseOfficeAsync(filePath);
+
+            // Create content with filename as title
+            let content = `# ${path.basename(filePath, '.odt')}\n\n`;
+            content += result.trim();
+
+            return content;
+        } catch (error: any) {
+            if (error.code === 'MODULE_NOT_FOUND') {
+                console.warn(`ODT parsing not available for ${filePath}. Install officeparser for ODT support.`);
+                return `# ${path.basename(filePath, '.odt')}\n\n[ODT content - install officeparser for extraction]`;
             }
             throw error;
         }
