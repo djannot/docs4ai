@@ -61,7 +61,7 @@ export const LOCAL_MODELS: Record<string, LocalModelConfig> = {
         id: 'local-qwen3',
         name: 'Qwen3 Embedding 0.6B',
         huggingFaceId: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
-        dimension: 768,
+        dimension: 1024,
         sizeApprox: '~600 MB',
         description: 'High-quality Qwen3 embeddings, ONNX optimized',
         quantized: false
@@ -72,7 +72,7 @@ export const LOCAL_MODELS: Record<string, LocalModelConfig> = {
 export const MINILM_EMBEDDING_DIMENSION = 384;
 export const E5_EMBEDDING_DIMENSION = 768;
 export const E5_LARGE_EMBEDDING_DIMENSION = 1024;
-export const QWEN3_EMBEDDING_DIMENSION = 768;
+export const QWEN3_EMBEDDING_DIMENSION = 1024;
 export const OPENAI_EMBEDDING_DIMENSION = 3072;
 
 // Legacy constant for backward compatibility

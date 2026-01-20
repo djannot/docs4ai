@@ -80,7 +80,7 @@
     "minilmDescription": "384 dimensions • Fast inference • Good for general use",
     "e5Description": "768 dimensions • 100+ languages • Good quality",
     "e5LargeDescription": "1024 dimensions • 100+ languages • Best local quality",
-    "qwen3Description": "768 dimensions • ONNX optimized • High-quality embeddings",
+    "qwen3Description": "1024 dimensions • ONNX optimized • High-quality embeddings",
     "openaiDescription": "3072 dimensions • Requires API key • Best quality",
     "embeddingProviderChangeWarning": "Changing the embedding provider requires deleting the database and re-syncing all files. The embedding dimensions are different between providers.\n\nDo you want to continue?",
     "syncWillBeStopped": "Note: The current sync will be stopped.",
