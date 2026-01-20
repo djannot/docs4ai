@@ -73,7 +73,7 @@
     "paid": "付费",
     "localEmbeddingInfo": "本地模型离线运行，首次使用时下载",
     "minilmDescription": "384 维 • 推理快速 • 适合一般用途",
-    "e5Description": "768 维 • 100+ 语言 • 良好质量",
+    "e5Description": "1024 维 • 100+ 语言 • 良好质量",
     "e5LargeDescription": "1024 维 • 100+ 语言 • 最佳本地质量",
     "openaiDescription": "3072 维 • 需要 API 密钥 • 最佳质量",
     "embeddingProviderChangeWarning": "更改嵌入提供商需要删除数据库并重新同步所有文件。不同提供商之间的嵌入维度不同。\n\n是否继续？",

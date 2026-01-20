@@ -89,7 +89,7 @@ async function initializeModel() {
     
     try {
         // Dynamic import for transformers.js (using workaround for ESM)
-        const transformers = await dynamicImport('@xenova/transformers');
+        const transformers = await dynamicImport('@huggingface/transformers');
         pipeline = transformers.pipeline;
         const env = transformers.env;
         

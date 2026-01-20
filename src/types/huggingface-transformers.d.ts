@@ -1,4 +1,4 @@
-declare module '@xenova/transformers' {
+declare module '@huggingface/transformers' {
     export const env: {
         cacheDir: string;
         localModelPath: string;
