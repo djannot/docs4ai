@@ -1239,6 +1239,7 @@
                                 <option value="local-minilm" ${profile.embeddingProvider === 'local-minilm' ? 'selected' : ''}>${t('ui.localMinilm')} (${t('ui.free')})</option>
                                 <option value="local-e5" ${profile.embeddingProvider === 'local-e5' || profile.embeddingProvider === 'local-qwen' ? 'selected' : ''}>${t('ui.localE5')} (${t('ui.free')})</option>
                                 <option value="local-e5-large" ${(profile.embeddingProvider || 'local-e5-large') === 'local-e5-large' ? 'selected' : ''}>${t('ui.localE5Large')} (${t('ui.free')})</option>
+                                <option value="local-qwen3" ${profile.embeddingProvider === 'local-qwen3' ? 'selected' : ''}>${t('ui.localQwen3')} (${t('ui.free')})</option>
                                 <option value="openai" ${profile.embeddingProvider === 'openai' ? 'selected' : ''}>${t('ui.openaiEmbeddings')} (${t('ui.paid')})</option>
                             </select>
                             <div class="model-description" id="modelDescription-${profile.id}" style="margin-top: 6px; font-size: 12px; color: #666;">
@@ -2310,6 +2311,7 @@
                 'local-minilm': t('ui.minilmDescription'),
                 'local-e5': t('ui.e5Description'),
                 'local-e5-large': t('ui.e5LargeDescription'),
+                'local-qwen3': t('ui.qwen3Description'),
                 'local-qwen': t('ui.e5Description'), // Fallback for old provider
                 'openai': t('ui.openaiDescription')
             };
