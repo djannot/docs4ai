@@ -105,6 +105,7 @@
     "downloadingModel": "جاري تحميل النموذج",
     "loadingModel": "جاري تحميل النموذج...",
     "downloading": "جاري التحميل",
-    "downloaded": "تم التحميل"
+    "downloaded": "تم التحميل",
+    "syncProgress": "تقدم المزامنة"
   }
 }

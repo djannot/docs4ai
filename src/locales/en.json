@@ -109,6 +109,7 @@
     "downloadingModel": "Downloading Model",
     "loadingModel": "Loading model...",
     "downloading": "Downloading",
-    "downloaded": "Downloaded"
+    "downloaded": "Downloaded",
+    "syncProgress": "Sync Progress"
   }
 }

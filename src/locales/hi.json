@@ -105,6 +105,7 @@
     "downloadingModel": "मॉडल डाउनलोड हो रहा है",
     "loadingModel": "मॉडल लोड हो रहा है...",
     "downloading": "डाउनलोड हो रहा है",
-    "downloaded": "डाउनलोड हो गया"
+    "downloaded": "डाउनलोड हो गया",
+    "syncProgress": "सिंक प्रगति"
   }
 }

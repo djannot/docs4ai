@@ -105,6 +105,7 @@
     "downloadingModel": "Modell wird heruntergeladen",
     "loadingModel": "Modell wird geladen...",
     "downloading": "Herunterladen",
-    "downloaded": "Heruntergeladen"
+    "downloaded": "Heruntergeladen",
+    "syncProgress": "Synchronisierungsfortschritt"
   }
 }

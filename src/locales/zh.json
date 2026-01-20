@@ -105,6 +105,7 @@
     "downloadingModel": "正在下载模型",
     "loadingModel": "正在加载模型...",
     "downloading": "正在下载",
-    "downloaded": "已下载"
+    "downloaded": "已下载",
+    "syncProgress": "同步进度"
   }
 }

@@ -1268,6 +1268,17 @@
                         <div class="download-progress-text" id="downloadProgressText-${profile.id}"></div>
                     </div>
 
+                    <div class="card" id="syncProgressCard-${profile.id}" style="display: ${stats.isSyncing && stats.syncProgress?.totalFiles > 0 ? 'block' : 'none'};">
+                        <div class="card-title">🔄 ${t('ui.syncProgress')}</div>
+                        <div class="sync-progress-info" style="font-size: 14px; color: #1d1d1f; margin-bottom: 8px;">
+                            <span id="syncProgressText-${profile.id}">0 / 0</span>
+                        </div>
+                        <div class="sync-progress-bar-container" style="height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">
+                            <div class="sync-progress-bar" id="syncProgressBar-${profile.id}" style="height: 100%; background: #34c759; border-radius: 4px; transition: width 0.3s ease; width: 0%"></div>
+                        </div>
+                        <div class="sync-progress-percent" id="syncProgressPercent-${profile.id}" style="font-size: 12px; color: #86868b; text-align: center;">0%</div>
+                    </div>
+
                     <div class="card">
                         <div class="card-title">📊 ${t('profile.stats', {})}</div>
                         
@@ -1615,6 +1626,28 @@
                     if (tokensEl) tokensEl.textContent = (stats.totalTokens || 0).toLocaleString();
                     const costEl = document.getElementById(`totalCost-${stats.profileId}`);
                     if (costEl) costEl.textContent = `$${(stats.totalCost || 0).toFixed(4)}`;
+                    
+                    // Update sync progress indicator
+                    const syncProgressCard = document.getElementById(`syncProgressCard-${stats.profileId}`);
+                    const syncProgressText = document.getElementById(`syncProgressText-${stats.profileId}`);
+                    const syncProgressBar = document.getElementById(`syncProgressBar-${stats.profileId}`);
+                    const syncProgressPercent = document.getElementById(`syncProgressPercent-${stats.profileId}`);
+                    
+                    if (syncProgressCard && syncProgressText && syncProgressBar && syncProgressPercent) {
+                        const progress = stats.syncProgress || { filesProcessed: 0, totalFiles: 0 };
+                        const filesProcessed = progress.filesProcessed || 0;
+                        const totalFiles = progress.totalFiles || 0;
+                        
+                        if (stats.isSyncing && totalFiles > 0) {
+                            syncProgressCard.style.display = 'block';
+                            syncProgressText.textContent = `${filesProcessed} / ${totalFiles}`;
+                            const percent = totalFiles > 0 ? Math.round((filesProcessed / totalFiles) * 100) : 0;
+                            syncProgressBar.style.width = `${percent}%`;
+                            syncProgressPercent.textContent = `${percent}%`;
+                        } else {
+                            syncProgressCard.style.display = 'none';
+                        }
+                    }
                 }
             }
             

@@ -52,6 +52,8 @@ interface ProfileState {
     totalChunks: number;
     totalTokens: number;
     totalCost: number;
+    totalFilesToSync: number;  // Total files matching extensions
+    filesProcessed: number;     // Files processed during current sync
 }
 
 // Store for persistent settings
@@ -594,7 +596,9 @@ function setupIpcHandlers() {
                 processedCount: 0,
                 totalChunks: 0,
                 totalTokens: persistedCosts?.totalTokens || 0,
-                totalCost: persistedCosts?.totalCost || 0
+                totalCost: persistedCosts?.totalCost || 0,
+                totalFilesToSync: 0,
+                filesProcessed: 0
             };
             profileStates.set(profileId, state);
         }
@@ -867,6 +871,10 @@ function setupIpcHandlers() {
             state.syncer?.stop();
             state.syncer = null;
             
+            // Reset sync progress
+            state.totalFilesToSync = 0;
+            state.filesProcessed = 0;
+            
             // Terminate embedding worker to stop any ongoing download
             if (state.embeddingService) {
                 await state.embeddingService.terminate();
@@ -1050,7 +1058,9 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 processedCount: 0,
                 totalChunks: 0,
                 totalTokens: persistedCosts?.totalTokens || 0,
-                totalCost: persistedCosts?.totalCost || 0
+                totalCost: persistedCosts?.totalCost || 0,
+                totalFilesToSync: 0,
+                filesProcessed: 0
             };
             profileStates.set(profileId, state);
         }
@@ -1161,6 +1171,12 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
 
         // Reset sync cancelled flag
         syncCancelled.set(profileId, false);
+
+        // Calculate total files to sync
+        const totalFiles = state.syncer.getSyncedFiles().length;
+        state.totalFilesToSync = totalFiles;
+        state.filesProcessed = 0;
+        sendStats(profileId); // Send initial progress
 
         // Start initial sync in background (don't block UI)
         performInitialSync(profileId).then(() => {
@@ -1325,6 +1341,11 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
     const files = state.syncer.getSyncedFiles();
     console.log(`[${profileName}] Initial sync: ${files.length} files (force=${forceReprocess})`);
 
+    // Update total files to sync if not already set
+    state.totalFilesToSync = files.length;
+    state.filesProcessed = 0;
+    sendStats(profileId); // Send initial progress
+
     let processed = 0;
     let skipped = 0;
 
@@ -1355,6 +1376,8 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
                     const stats = fs.statSync(filePath);
                     if (stats.mtime <= fileInfo.modifiedAt) {
                         skipped++;
+                        // Still count skipped files as processed for progress
+                        state.filesProcessed++;
                         continue; // Skip unchanged files silently
                     }
                 } catch {
@@ -1365,6 +1388,7 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
             console.log(`[${profileName}] Processing ${i + 1}/${files.length}: ${filePath}`);
             await processFile(profileId, filePath, forceReprocess);
             processed++;
+            state.filesProcessed = processed + skipped;
             // Update stats after each file during initial sync
             sendStats(profileId);
             
@@ -1382,6 +1406,10 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
     
     if (!syncCancelled.get(profileId)) {
         console.log(`[${profileName}] Sync complete: ${processed} processed, ${skipped} skipped (unchanged)`);
+        // Reset progress tracking when sync completes
+        state.totalFilesToSync = 0;
+        state.filesProcessed = 0;
+        sendStats(profileId);
     }
 }
 
@@ -1432,7 +1460,11 @@ function sendStats(profileId?: string) {
             totalChunks,
             totalTokens,
             totalCost,
-            embeddingProvider: profile?.embeddingProvider || 'local-e5-large'
+            embeddingProvider: profile?.embeddingProvider || 'local-e5-large',
+            syncProgress: state ? {
+                filesProcessed: state.filesProcessed || 0,
+                totalFiles: state.totalFilesToSync || 0
+            } : { filesProcessed: 0, totalFiles: 0 }
         };
         
         if (state) {
@@ -1493,7 +1525,11 @@ function sendStats(profileId?: string) {
                 totalChunks,
                 totalTokens,
                 totalCost,
-                embeddingProvider: migrateEmbeddingProvider(profile.embeddingProvider)
+                embeddingProvider: migrateEmbeddingProvider(profile.embeddingProvider),
+                syncProgress: state ? {
+                    filesProcessed: state.filesProcessed || 0,
+                    totalFiles: state.totalFilesToSync || 0
+                } : { filesProcessed: 0, totalFiles: 0 }
             };
         });
         
@@ -1563,7 +1599,9 @@ app.whenReady().then(async () => {
                     processedCount: 0,
                     totalChunks: 0,
                     totalTokens: persistedCosts?.totalTokens || 0,
-                    totalCost: persistedCosts?.totalCost || 0
+                    totalCost: persistedCosts?.totalCost || 0,
+                    totalFilesToSync: 0,
+                    filesProcessed: 0
                 });
             }
         }
