@@ -297,10 +297,41 @@
             margin-top: 12px;
             margin-bottom: 6px;
             font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .extension-category:first-child {
             margin-top: 0;
+        }
+
+        .category-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .category-action-btn {
+            font-size: 10px;
+            color: #0071e3;
+            background: none;
+            border: none;
+            padding: 2px 6px;
+            cursor: pointer;
+            text-transform: none;
+            letter-spacing: normal;
+            font-weight: 500;
+        }
+
+        .category-action-btn:hover {
+            text-decoration: underline;
+            opacity: 1;
+        }
+
+        .extension-ext {
+            color: #86868b;
+            font-weight: normal;
+            font-size: 11px;
         }
 
         .stats-grid {
@@ -1245,6 +1276,7 @@
             const extensionGroups = [
                 {
                     category: 'Documents',
+                    id: 'documents',
                     extensions: [
                         { ext: '.md', label: 'Markdown' },
                         { ext: '.txt', label: 'Text' },
@@ -1258,6 +1290,7 @@
                 },
                 {
                     category: 'Web',
+                    id: 'web',
                     extensions: [
                         { ext: '.html', label: 'HTML' },
                         { ext: '.htm', label: 'HTM' }
@@ -1268,14 +1301,22 @@
             // Build the HTML
             let html = '';
             for (const group of extensionGroups) {
-                html += `<div class="extension-category">${group.category}</div>`;
-                html += `<div class="extensions-grid">`;
+                html += `
+                    <div class="extension-category">
+                        <span>${group.category}</span>
+                        <div class="category-actions">
+                            <button class="category-action-btn" onclick="selectAllExtensions('${profileId}', '${group.id}')">Select All</button>
+                            <button class="category-action-btn" onclick="clearAllExtensions('${profileId}', '${group.id}')">Clear</button>
+                        </div>
+                    </div>
+                `;
+                html += `<div class="extensions-grid" data-category="${group.id}">`;
                 for (const item of group.extensions) {
                     const isChecked = selected.includes(item.ext);
                     html += `
-                        <label class="extension-checkbox ${isChecked ? 'checked' : ''}" data-ext="${item.ext}">
+                        <label class="extension-checkbox ${isChecked ? 'checked' : ''}" data-ext="${item.ext}" data-category="${group.id}">
                             <input type="checkbox" value="${item.ext}" ${isChecked ? 'checked' : ''} onchange="handleExtensionChange('${profileId}', this)">
-                            <span class="extension-label">${item.label}</span>
+                            <span class="extension-label">${item.label} <span class="extension-ext">(${item.ext})</span></span>
                         </label>
                     `;
                 }
@@ -1283,6 +1324,28 @@
             }
 
             container.innerHTML = html;
+        }
+
+        function selectAllExtensions(profileId, categoryId) {
+            const checkboxes = document.querySelectorAll(`#extensionsSelector-${profileId} .extension-checkbox[data-category="${categoryId}"] input[type="checkbox"]`);
+            checkboxes.forEach(cb => {
+                if (!cb.checked) {
+                    cb.checked = true;
+                    cb.closest('.extension-checkbox').classList.add('checked');
+                }
+            });
+            saveProfileSettings(profileId);
+        }
+
+        function clearAllExtensions(profileId, categoryId) {
+            const checkboxes = document.querySelectorAll(`#extensionsSelector-${profileId} .extension-checkbox[data-category="${categoryId}"] input[type="checkbox"]`);
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    cb.checked = false;
+                    cb.closest('.extension-checkbox').classList.remove('checked');
+                }
+            });
+            saveProfileSettings(profileId);
         }
 
         function handleExtensionChange(profileId, checkbox) {
