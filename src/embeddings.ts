@@ -4,6 +4,16 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import { Worker } from 'worker_threads';
 
+// CRITICAL: Pre-load onnxruntime-node in the main thread to avoid
+// "Module did not self-register" errors when worker threads restart.
+// See: https://github.com/xenova/transformers.js/issues/651
+try {
+    require('onnxruntime-node');
+} catch (error) {
+    // It's okay if this fails - optional dependency might not be installed
+    // but we still want to try
+}
+
 // Get the cache directory for models
 export function getModelCacheDir(): string {
     if (app?.isPackaged) {

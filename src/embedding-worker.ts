@@ -86,18 +86,18 @@ function sendTotalProgress() {
 
 async function initializeModel() {
     const { modelId, quantized, cacheDir } = workerData as WorkerData;
-    
+
     try {
         // Dynamic import for transformers.js (using workaround for ESM)
         const transformers = await dynamicImport('@huggingface/transformers');
         pipeline = transformers.pipeline;
         const env = transformers.env;
-        
+
         // Configure cache directory
         env.cacheDir = cacheDir;
         env.localModelPath = cacheDir;
         env.allowRemoteModels = true;
-        
+
         console.log(`[Worker] Loading model: ${modelId}...`);
         
         localPipeline = await pipeline('feature-extraction', modelId, {
