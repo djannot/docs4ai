@@ -39,6 +39,7 @@ export class McpServer {
     private openaiApiKey: string | null = null;
     private port: number;
     private sessions: Map<string, boolean> = new Map();
+    private onCostUpdate: ((tokens: number, cost: number) => void) | null = null;
 
     constructor(port: number = 3333) {
         this.port = port;
@@ -397,6 +398,13 @@ export class McpServer {
             input: queryText
         });
         const queryEmbedding = embeddingResponse.data[0].embedding;
+        
+        // Track tokens and cost for query
+        const tokens = embeddingResponse.usage?.total_tokens || 0;
+        const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
+        if (this.onCostUpdate) {
+            this.onCostUpdate(tokens, cost);
+        }
 
         // Query database
         const db = new Database(this.dbPath);
@@ -483,6 +491,10 @@ export class McpServer {
 
     setApiKey(apiKey: string | null) {
         this.openaiApiKey = apiKey;
+    }
+
+    setOnCostUpdate(callback: (tokens: number, cost: number) => void) {
+        this.onCostUpdate = callback;
     }
 
     start(): Promise<void> {

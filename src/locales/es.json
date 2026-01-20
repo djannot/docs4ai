@@ -35,6 +35,8 @@
     "stats": {
       "trackedFiles": "Archivos rastreados",
       "totalChunks": "Total de fragmentos"
+    "totalTokens": "Total de tokens",
+    "totalCost": "Costo total",
     }
   },
   "mcp": {
@@ -69,6 +71,8 @@
     "usesEmbedding": "Usa text-embedding-3-large (3072 dimensiones)",
     "filesTracked": "Archivos rastreados",
     "totalChunks": "Total de fragmentos",
+    "totalTokens": "Total de tokens",
+    "totalCost": "Costo total",
     "browseDatabase": "Explorar base de datos",
     "stopSync": "Detener sincronización",
     "startSyncing": "Iniciar sincronización",

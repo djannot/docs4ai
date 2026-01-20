@@ -1222,6 +1222,14 @@
                             <span class="stat-label">${t('ui.totalChunks')}</span>
                             <span class="stat-value" id="totalChunks-${profile.id}">${stats.totalChunks || 0}</span>
                         </div>
+                        <div class="stat-item">
+                            <span class="stat-label">${t('ui.totalTokens')}</span>
+                            <span class="stat-value" id="totalTokens-${profile.id}">${(stats.totalTokens || 0).toLocaleString()}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">${t('ui.totalCost')}</span>
+                            <span class="stat-value" id="totalCost-${profile.id}">$${(stats.totalCost || 0).toFixed(4)}</span>
+                        </div>
                         <button class="btn-secondary" style="width: 100%; margin-top: 12px;" id="browseDbBtn-${profile.id}">${t('ui.browseDatabase')}</button>
                     </div>
 
@@ -1418,6 +1426,10 @@
                     
                     document.getElementById(`trackedFiles-${stats.profileId}`).textContent = stats.trackedFiles;
                     document.getElementById(`totalChunks-${stats.profileId}`).textContent = stats.totalChunks;
+                    const tokensEl = document.getElementById(`totalTokens-${stats.profileId}`);
+                    if (tokensEl) tokensEl.textContent = (stats.totalTokens || 0).toLocaleString();
+                    const costEl = document.getElementById(`totalCost-${stats.profileId}`);
+                    if (costEl) costEl.textContent = `$${(stats.totalCost || 0).toFixed(4)}`;
                 }
             }
             

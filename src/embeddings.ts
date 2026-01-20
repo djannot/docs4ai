@@ -40,7 +40,7 @@ export class EmbeddingService {
         }
     }
 
-    async generateEmbedding(text: string): Promise<number[]> {
+    async generateEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
         if (!this._isValid) {
             throw new InvalidApiKeyError();
         }
@@ -55,7 +55,13 @@ export class EmbeddingService {
                 throw new Error('Failed to get embedding from OpenAI');
             }
 
-            return response.data[0].embedding;
+            // Extract token count from usage (total_tokens includes input tokens)
+            const tokens = response.usage?.total_tokens || 0;
+
+            return {
+                embedding: response.data[0].embedding,
+                tokens
+            };
         } catch (error: any) {
             // Check for authentication errors (401)
             if (error?.status === 401 || error?.code === 'invalid_api_key' || 
@@ -68,17 +74,19 @@ export class EmbeddingService {
         }
     }
 
-    async generateEmbeddings(texts: string[]): Promise<number[][]> {
+    async generateEmbeddings(texts: string[]): Promise<{ embeddings: number[][]; totalTokens: number }> {
         const embeddings: number[][] = [];
+        let totalTokens = 0;
 
         for (const text of texts) {
-            const embedding = await this.generateEmbedding(text);
-            embeddings.push(embedding);
+            const result = await this.generateEmbedding(text);
+            embeddings.push(result.embedding);
+            totalTokens += result.tokens;
             
             // Small delay to avoid rate limits
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        return embeddings;
+        return { embeddings, totalTokens };
     }
 }

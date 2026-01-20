@@ -35,6 +35,8 @@
     "stats": {
       "trackedFiles": "Verfolgte Dateien",
       "totalChunks": "Gesamt-Chunks"
+    "totalTokens": "Gesamt-Tokens",
+    "totalCost": "Gesamtkosten",
     }
   },
   "mcp": {
@@ -69,6 +71,8 @@
     "usesEmbedding": "Verwendet text-embedding-3-large (3072 Dimensionen)",
     "filesTracked": "Verfolgte Dateien",
     "totalChunks": "Gesamt-Chunks",
+    "totalTokens": "Gesamt-Tokens",
+    "totalCost": "Gesamtkosten",
     "browseDatabase": "Datenbank durchsuchen",
     "stopSync": "Synchronisierung stoppen",
     "startSyncing": "Synchronisierung starten",

@@ -69,6 +69,8 @@
     "usesEmbedding": "Uses text-embedding-3-large (3072 dimensions)",
     "filesTracked": "Files tracked",
     "totalChunks": "Total chunks",
+    "totalTokens": "Total tokens",
+    "totalCost": "Total cost",
     "browseDatabase": "Browse Database",
     "stopSync": "Stop Sync",
     "startSyncing": "Start Syncing",

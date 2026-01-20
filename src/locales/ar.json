@@ -35,6 +35,8 @@
     "stats": {
       "trackedFiles": "الملفات المتتبعة",
       "totalChunks": "إجمالي الأجزاء"
+    "totalTokens": "إجمالي الرموز",
+    "totalCost": "التكلفة الإجمالية",
     }
   },
   "mcp": {
@@ -69,6 +71,8 @@
     "usesEmbedding": "يستخدم text-embedding-3-large (3072 بُعد)",
     "filesTracked": "الملفات المتتبعة",
     "totalChunks": "إجمالي الأجزاء",
+    "totalTokens": "إجمالي الرموز",
+    "totalCost": "التكلفة الإجمالية",
     "browseDatabase": "تصفح قاعدة البيانات",
     "stopSync": "إيقاف المزامنة",
     "startSyncing": "بدء المزامنة",

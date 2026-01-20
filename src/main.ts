@@ -25,6 +25,7 @@ interface AppSettings {
     profiles: ProfileSettings[];
     activeProfileId: string | null;
     language?: string;
+    profileCosts?: Record<string, { totalTokens: number; totalCost: number }>;
 }
 
 interface ProfileState {
@@ -36,6 +37,8 @@ interface ProfileState {
     status: 'idle' | 'syncing' | 'processing';
     processedCount: number;
     totalChunks: number;
+    totalTokens: number;
+    totalCost: number;
 }
 
 // Store for persistent settings
@@ -548,21 +551,27 @@ function setupIpcHandlers() {
         }
 
         try {
-            // Get or create profile state
-            let state = profileStates.get(profileId);
-            if (!state) {
-                state = {
-                    syncer: null,
-                    database: null,
-                    processor: null,
-                    embeddingService: null,
-                    mcpServer: null,
-                    status: 'idle',
-                    processedCount: 0,
-                    totalChunks: 0
-                };
-                profileStates.set(profileId, state);
-            }
+        // Get or create profile state
+        let state = profileStates.get(profileId);
+        const appSettings = store.store;
+        
+        if (!state) {
+            // Load persisted costs if available
+            const persistedCosts = appSettings.profileCosts?.[profileId];
+            state = {
+                syncer: null,
+                database: null,
+                processor: null,
+                embeddingService: null,
+                mcpServer: null,
+                status: 'idle',
+                processedCount: 0,
+                totalChunks: 0,
+                totalTokens: persistedCosts?.totalTokens || 0,
+                totalCost: persistedCosts?.totalCost || 0
+            };
+            profileStates.set(profileId, state);
+        }
 
             // Stop existing server if running
             if (state.mcpServer?.isRunning()) {
@@ -574,6 +583,26 @@ function setupIpcHandlers() {
             state.mcpServer = new McpServer(port);
             state.mcpServer.setDatabase(dbPath);
             state.mcpServer.setApiKey(apiKey);
+            // Track costs for MCP queries
+            state.mcpServer.setOnCostUpdate((tokens, cost) => {
+                if (state) {
+                    state.totalTokens += tokens;
+                    state.totalCost += cost;
+                    
+                    // Persist costs
+                    const appSettings = store.store;
+                    if (!appSettings.profileCosts) {
+                        appSettings.profileCosts = {};
+                    }
+                    appSettings.profileCosts[profileId] = {
+                        totalTokens: state.totalTokens,
+                        totalCost: state.totalCost
+                    };
+                    store.store = appSettings;
+                    
+                    sendStats(profileId);
+                }
+            });
             await state.mcpServer.start();
             
             // Track port usage
@@ -691,19 +720,50 @@ function setupIpcHandlers() {
 
     // Get stats for a specific profile
     ipcMain.handle('get-stats', (_event: IpcMainInvokeEvent, profileId: string) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        
+        // Load persisted costs
+        const persistedCosts = appSettings.profileCosts?.[profileId];
+        let totalTokens = persistedCosts?.totalTokens || 0;
+        let totalCost = persistedCosts?.totalCost || 0;
+        
         const state = profileStates.get(profileId);
-        if (!state) {
-            return {
-                isSyncing: false,
-                trackedFiles: 0,
-                totalChunks: 0
-            };
+        
+        // If state exists, use its values (which may be more up-to-date)
+        if (state) {
+            totalTokens = state.totalTokens || totalTokens;
+            totalCost = state.totalCost || totalCost;
+        }
+        
+        // Try to get database stats even if sync isn't running
+        let trackedFiles = 0;
+        let totalChunks = 0;
+        
+        if (profile?.databasePath) {
+            try {
+                const db = new DatabaseManager(profile.databasePath);
+                trackedFiles = db.getTrackedFilesCount();
+                totalChunks = db.getTotalChunksCount();
+                db.close();
+            } catch (error) {
+                // Database might not exist yet or might be locked
+                console.log(`[${profileId}] Could not read database stats:`, error);
+            }
+        }
+        
+        // If state exists and database is initialized, prefer those values
+        if (state?.database) {
+            trackedFiles = state.database.getTrackedFilesCount();
+            totalChunks = state.database.getTotalChunksCount();
         }
         
         return {
-            isSyncing: state.syncer?.isSyncing ?? false,
-            trackedFiles: state.database?.getTrackedFilesCount() ?? 0,
-            totalChunks: state.database?.getTotalChunksCount() ?? 0
+            isSyncing: state?.syncer?.isSyncing ?? false,
+            trackedFiles,
+            totalChunks,
+            totalTokens,
+            totalCost
         };
     });
 
@@ -826,7 +886,11 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
     try {
         // Get or create profile state
         let state = profileStates.get(profileId);
+        const appSettings = store.store;
+        
         if (!state) {
+            // Load persisted costs if available
+            const persistedCosts = appSettings.profileCosts?.[profileId];
             state = {
                 syncer: null,
                 database: null,
@@ -835,7 +899,9 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 mcpServer: null,
                 status: 'idle',
                 processedCount: 0,
-                totalChunks: 0
+                totalChunks: 0,
+                totalTokens: persistedCosts?.totalTokens || 0,
+                totalCost: persistedCosts?.totalCost || 0
             };
             profileStates.set(profileId, state);
         }
@@ -974,7 +1040,25 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
 
             if (state.embeddingService) {
                 try {
-                    embedding = await state.embeddingService.generateEmbedding(chunk.content);
+                    const result = await state.embeddingService.generateEmbedding(chunk.content);
+                    embedding = result.embedding;
+                    
+                    // Track tokens and cost
+                    const tokens = result.tokens;
+                    const cost = (tokens / 1_000_000) * 0.13; // $0.13 per million tokens
+                    state.totalTokens += tokens;
+                    state.totalCost += cost;
+                    
+                    // Persist costs
+                    const appSettings = store.store;
+                    if (!appSettings.profileCosts) {
+                        appSettings.profileCosts = {};
+                    }
+                    appSettings.profileCosts[profileId] = {
+                        totalTokens: state.totalTokens,
+                        totalCost: state.totalCost
+                    };
+                    store.store = appSettings;
                 } catch (error) {
                     if (error instanceof InvalidApiKeyError) {
                         console.error(`[${profileId}] Invalid API key detected - stopping sync`);
@@ -1055,12 +1139,49 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
 function sendStats(profileId?: string) {
     if (profileId) {
         // Send stats for a specific profile
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
         const state = profileStates.get(profileId);
+        
+        // Load persisted costs
+        const persistedCosts = appSettings.profileCosts?.[profileId];
+        let totalTokens = persistedCosts?.totalTokens || 0;
+        let totalCost = persistedCosts?.totalCost || 0;
+        
+        // If state exists, use its values (which may be more up-to-date)
+        if (state) {
+            totalTokens = state.totalTokens || totalTokens;
+            totalCost = state.totalCost || totalCost;
+        }
+        
+        // Try to get database stats even if sync isn't running
+        let trackedFiles = 0;
+        let totalChunks = 0;
+        
+        if (profile?.databasePath) {
+            try {
+                const db = new DatabaseManager(profile.databasePath);
+                trackedFiles = db.getTrackedFilesCount();
+                totalChunks = db.getTotalChunksCount();
+                db.close();
+            } catch (error) {
+                // Database might not exist yet or might be locked
+            }
+        }
+        
+        // If state exists and database is initialized, prefer those values
+        if (state?.database) {
+            trackedFiles = state.database.getTrackedFilesCount();
+            totalChunks = state.database.getTotalChunksCount();
+        }
+        
         const stats = {
             profileId,
             isSyncing: state?.syncer?.isSyncing ?? false,
-            trackedFiles: state?.database?.getTrackedFilesCount() ?? 0,
-            totalChunks: state?.database?.getTotalChunksCount() ?? 0
+            trackedFiles,
+            totalChunks,
+            totalTokens,
+            totalCost
         };
         
         if (state) {
@@ -1080,11 +1201,46 @@ function sendStats(profileId?: string) {
         const appSettings = store.store;
         const allStats = (appSettings.profiles || []).map(profile => {
             const state = profileStates.get(profile.id);
+            
+            // Load persisted costs
+            const persistedCosts = appSettings.profileCosts?.[profile.id];
+            let totalTokens = persistedCosts?.totalTokens || 0;
+            let totalCost = persistedCosts?.totalCost || 0;
+            
+            // If state exists, use its values (which may be more up-to-date)
+            if (state) {
+                totalTokens = state.totalTokens || totalTokens;
+                totalCost = state.totalCost || totalCost;
+            }
+            
+            // Try to get database stats even if sync isn't running
+            let trackedFiles = 0;
+            let totalChunks = 0;
+            
+            if (profile.databasePath) {
+                try {
+                    const db = new DatabaseManager(profile.databasePath);
+                    trackedFiles = db.getTrackedFilesCount();
+                    totalChunks = db.getTotalChunksCount();
+                    db.close();
+                } catch (error) {
+                    // Database might not exist yet or might be locked
+                }
+            }
+            
+            // If state exists and database is initialized, prefer those values
+            if (state?.database) {
+                trackedFiles = state.database.getTrackedFilesCount();
+                totalChunks = state.database.getTotalChunksCount();
+            }
+            
             return {
                 profileId: profile.id,
                 isSyncing: state?.syncer?.isSyncing ?? false,
-                trackedFiles: state?.database?.getTrackedFilesCount() ?? 0,
-                totalChunks: state?.database?.getTotalChunksCount() ?? 0
+                trackedFiles,
+                totalChunks,
+                totalTokens,
+                totalCost
             };
         });
         
@@ -1136,6 +1292,27 @@ app.whenReady().then(async () => {
     const appSettings = store.store;
     await initI18n(appSettings.language);
     
+    // Initialize profile states with persisted costs on startup
+    if (appSettings.profiles) {
+        for (const profile of appSettings.profiles) {
+            if (!profileStates.has(profile.id)) {
+                const persistedCosts = appSettings.profileCosts?.[profile.id];
+                profileStates.set(profile.id, {
+                    syncer: null,
+                    database: null,
+                    processor: null,
+                    embeddingService: null,
+                    mcpServer: null,
+                    status: 'idle',
+                    processedCount: 0,
+                    totalChunks: 0,
+                    totalTokens: persistedCosts?.totalTokens || 0,
+                    totalCost: persistedCosts?.totalCost || 0
+                });
+            }
+        }
+    }
+    
     // Prevent app from quitting when all windows are closed (for tray support on Linux/macOS)
     app.on('window-all-closed', () => {
         // On macOS and Linux, keep the app running when windows are closed (runs in tray)
@@ -1149,6 +1326,13 @@ app.whenReady().then(async () => {
     createWindow();
     createTray();
     setupIpcHandlers();
+    
+    // Send initial stats for all profiles after window is ready
+    if (mainWindow) {
+        mainWindow.webContents.once('did-finish-load', () => {
+            sendStats(); // Send stats for all profiles
+        });
+    }
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {

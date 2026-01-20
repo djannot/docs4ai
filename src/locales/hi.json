@@ -35,6 +35,8 @@
     "stats": {
       "trackedFiles": "ट्रैक की गई फ़ाइलें",
       "totalChunks": "कुल चंक्स"
+    "totalTokens": "कुल टोकन",
+    "totalCost": "कुल लागत",
     }
   },
   "mcp": {
@@ -69,6 +71,8 @@
     "usesEmbedding": "text-embedding-3-large (3072 आयाम) का उपयोग करता है",
     "filesTracked": "ट्रैक की गई फ़ाइलें",
     "totalChunks": "कुल चंक्स",
+    "totalTokens": "कुल टोकन",
+    "totalCost": "कुल लागत",
     "browseDatabase": "डेटाबेस ब्राउज़ करें",
     "stopSync": "सिंक रोकें",
     "startSyncing": "सिंक शुरू करें",

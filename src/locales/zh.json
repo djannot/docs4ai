@@ -35,6 +35,8 @@
     "stats": {
       "trackedFiles": "跟踪的文件",
       "totalChunks": "总块数"
+    "totalTokens": "总令牌数",
+    "totalCost": "总成本",
     }
   },
   "mcp": {
@@ -69,6 +71,8 @@
     "usesEmbedding": "使用 text-embedding-3-large (3072 维)",
     "filesTracked": "跟踪的文件",
     "totalChunks": "总块数",
+    "totalTokens": "总令牌数",
+    "totalCost": "总成本",
     "browseDatabase": "浏览数据库",
     "stopSync": "停止同步",
     "startSyncing": "开始同步",
