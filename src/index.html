@@ -1746,19 +1746,33 @@
             const extensionCheckboxes = document.querySelectorAll(`#extensionsSelector-${profileId} input[type="checkbox"]:checked`);
             const selectedExtensions = Array.from(extensionCheckboxes).map(cb => cb.value).join(',');
 
-            const updates = {
-                watchedFolder: (folderPathEl.textContent === t('ui.noFolderSelected')) ? '' : folderPathEl.textContent,
-                databasePath: (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent,
-                openAIApiKey: document.getElementById(`apiKey-${profileId}`).value,
-                fileExtensions: selectedExtensions,
-                recursive: document.getElementById(`recursive-${profileId}`).checked,
-                embeddingProvider: embeddingProviderEl?.value || 'local-e5-large'
-            };
+            // Get current values
+            const newWatchedFolder = (folderPathEl.textContent === t('ui.noFolderSelected')) ? '' : folderPathEl.textContent;
+            const newDatabasePath = (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent;
+            const newApiKey = document.getElementById(`apiKey-${profileId}`).value;
+            const newRecursive = document.getElementById(`recursive-${profileId}`).checked;
+            const newEmbeddingProvider = embeddingProviderEl?.value || 'local-e5-large';
 
-            await window.api.updateProfile(profileId, updates);
+            // Only send fields that actually changed to avoid triggering unnecessary worker restarts
+            const updates = {};
 
-            // Update local profile data
-            Object.assign(profile, updates);
+            if (newWatchedFolder !== profile.watchedFolder) updates.watchedFolder = newWatchedFolder;
+            if (newDatabasePath !== profile.databasePath) updates.databasePath = newDatabasePath;
+            if (newApiKey !== profile.openAIApiKey) updates.openAIApiKey = newApiKey;
+            if (selectedExtensions !== profile.fileExtensions) updates.fileExtensions = selectedExtensions;
+            if (newRecursive !== profile.recursive) updates.recursive = newRecursive;
+            if (newEmbeddingProvider !== profile.embeddingProvider) updates.embeddingProvider = newEmbeddingProvider;
+
+            // Only call API if there are actual changes
+            if (Object.keys(updates).length > 0) {
+                console.log('[DEBUG] Saving profile changes:', Object.keys(updates));
+                await window.api.updateProfile(profileId, updates);
+
+                // Update local profile data
+                Object.assign(profile, updates);
+            } else {
+                console.log('[DEBUG] No profile changes to save');
+            }
         }
 
         async function toggleWatching(profileId) {
