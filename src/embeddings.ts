@@ -267,7 +267,7 @@ export class EmbeddingService {
         if (this.worker) {
             const request: EmbeddingRequest = { id: 'shutdown', type: 'shutdown' };
             this.worker.postMessage(request);
-            
+
             // Give worker time to clean up, then force terminate
             await new Promise<void>((resolve) => {
                 const timeout = setTimeout(() => {
@@ -277,7 +277,7 @@ export class EmbeddingService {
                     }
                     resolve();
                 }, 1000);
-                
+
                 if (this.worker) {
                     this.worker.once('exit', () => {
                         clearTimeout(timeout);
@@ -289,6 +289,11 @@ export class EmbeddingService {
                     resolve();
                 }
             });
+
+            // CRITICAL: Add delay after worker exit to ensure native modules (onnxruntime-node)
+            // are fully unloaded before a new worker can load them. Without this delay,
+            // restarting the worker causes "Module did not self-register" errors.
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
     }
 
