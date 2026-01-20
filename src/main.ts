@@ -421,7 +421,7 @@ function setupIpcHandlers() {
                 watchedFolder: '',
                 databasePath: '',
                 openAIApiKey: '',
-                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx',
+                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx,.pptx,.rtf,.odt',
                 recursive: true,
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
