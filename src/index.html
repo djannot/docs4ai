@@ -28,6 +28,7 @@
         header {
             text-align: center;
             margin-bottom: 24px;
+            position: relative;
         }
 
         header h1 {
@@ -37,6 +38,36 @@
             align-items: center;
             justify-content: center;
             gap: 10px;
+        }
+
+        .language-selector {
+            position: absolute;
+            top: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .language-selector select {
+            padding: 6px 10px;
+            border: 1px solid #d2d2d7;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            cursor: pointer;
+            color: #1d1d1f;
+        }
+
+        .language-selector select:focus {
+            outline: none;
+            border-color: #0071e3;
+        }
+
+        .language-selector label {
+            font-size: 12px;
+            color: #86868b;
+            margin: 0;
         }
 
         .status-indicator {
@@ -718,6 +749,20 @@
 <body>
     <div class="container">
         <header>
+            <div class="language-selector">
+                <label for="languageSelect">🌐</label>
+                <select id="languageSelect">
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                    <option value="zh">中文</option>
+                    <option value="hi">हिन्दी</option>
+                    <option value="ar">العربية</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                </select>
+            </div>
             <h1>📄 Docs4ai</h1>
             <div class="status-indicator">
                 <div class="status-dot" id="statusDot"></div>
@@ -931,7 +976,7 @@
             addBtn.className = 'profile-tab-add';
             addBtn.innerHTML = '+';
             addBtn.style.cursor = 'pointer';
-            addBtn.title = 'Add new profile';
+            addBtn.title = t('ui.addNewProfile');
             addBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -1017,7 +1062,7 @@
         async function createNewProfile() {
             try {
                 console.log('createNewProfile called');
-                const name = await showInputDialog('New Profile', 'Enter profile name:', `Profile ${profiles.length + 1}`);
+                const name = await showInputDialog(t('ui.newProfile'), t('ui.enterProfileName'), `${t('profile.name')} ${profiles.length + 1}`);
                 console.log('User entered name:', name);
                 
                 if (!name) {
@@ -1026,7 +1071,7 @@
                 }
                 
                 if (!name.trim()) {
-                    alert('Profile name cannot be empty');
+                    alert(t('ui.profileNameCannotBeEmpty'));
                     return;
                 }
                 
@@ -1070,11 +1115,11 @@
             event.stopPropagation();
             
             if (profiles.length === 1) {
-                alert('Cannot delete the last profile. Please create another profile first.');
+                alert(t('ui.cannotDeleteLastProfile'));
                 return;
             }
             
-            if (!confirm('Are you sure you want to delete this profile?')) {
+            if (!confirm(t('ui.deleteProfileConfirm'))) {
                 return;
             }
             
@@ -1105,7 +1150,7 @@
             const profile = profiles.find(p => p.id === activeProfileId);
             
             if (!profile) {
-                container.innerHTML = '<div class="empty-state">No profile selected</div>';
+                container.innerHTML = `<div class="empty-state">${t('ui.noProfileSelected')}</div>`;
                 return;
             }
             
@@ -1114,74 +1159,74 @@
             container.innerHTML = `
                 <div class="profile-content active" data-profile-id="${profile.id}">
                     <div class="card">
-                        <div class="card-title">👤 Profile Name</div>
+                        <div class="card-title">👤 ${t('profile.name')}</div>
                         <div class="input-group">
-                            <input type="text" id="profileName-${profile.id}" value="${escapeHtml(profile.name)}" placeholder="Profile name" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                            <input type="text" id="profileName-${profile.id}" value="${escapeHtml(profile.name)}" placeholder="${t('profile.name')}" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
                         </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-title">📁 Watch Folder</div>
+                        <div class="card-title">📁 ${t('profile.watchedFolder')}</div>
                         <div class="input-row">
-                            <div class="path-display ${profile.watchedFolder ? 'has-value' : ''}" id="folderPath-${profile.id}">${profile.watchedFolder || 'No folder selected'}</div>
-                            <button class="btn-secondary" id="selectFolderBtn-${profile.id}">Select...</button>
+                            <div class="path-display ${profile.watchedFolder ? 'has-value' : ''}" id="folderPath-${profile.id}">${profile.watchedFolder || t('ui.noFolderSelected')}</div>
+                            <button class="btn-secondary" id="selectFolderBtn-${profile.id}">${t('profile.selectFolder')}</button>
                         </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-title">💾 Database</div>
+                        <div class="card-title">💾 ${t('profile.databasePath')}</div>
                         <div class="input-row">
-                            <div class="path-display ${profile.databasePath ? 'has-value' : ''}" id="databasePath-${profile.id}">${profile.databasePath || 'No database selected'}</div>
-                            <button class="btn-secondary" id="selectDatabaseBtn-${profile.id}">Select...</button>
+                            <div class="path-display ${profile.databasePath ? 'has-value' : ''}" id="databasePath-${profile.id}">${profile.databasePath || t('ui.noDatabaseSelected')}</div>
+                            <button class="btn-secondary" id="selectDatabaseBtn-${profile.id}">${t('profile.selectDatabase')}</button>
                         </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-title">⚙️ Settings</div>
+                        <div class="card-title">⚙️ ${t('profile.settings', {})}</div>
                         
                         <div class="input-group">
                             <div class="checkbox-group">
                                 <input type="checkbox" id="recursive-${profile.id}" ${profile.recursive ? 'checked' : ''}>
-                                <label for="recursive-${profile.id}">Watch subdirectories</label>
+                                <label for="recursive-${profile.id}">${t('ui.watchSubdirectories')}</label>
                             </div>
                         </div>
 
                         <div class="input-group">
-                            <label for="extensions-${profile.id}">File extensions:</label>
+                            <label for="extensions-${profile.id}">${t('ui.fileExtensions')}:</label>
                             <input type="text" id="extensions-${profile.id}" value="${escapeHtml(profile.fileExtensions)}" placeholder=".md,.txt,.html,.pdf,.doc,.docx">
                         </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-title">🧠 Embeddings (OpenAI)</div>
+                        <div class="card-title">🧠 ${t('profile.embeddings', {})}</div>
                         
                         <div class="input-group">
-                            <label for="apiKey-${profile.id}">API Key:</label>
+                            <label for="apiKey-${profile.id}">${t('ui.apiKey')}:</label>
                             <input type="password" id="apiKey-${profile.id}" value="${escapeHtml(profile.openAIApiKey || '')}" placeholder="sk-...">
                         </div>
 
-                        <div class="info">Uses text-embedding-3-large (3072 dimensions)</div>
+                        <div class="info">${t('ui.usesEmbedding')}</div>
                         <div class="warning" id="apiKeyWarning-${profile.id}" style="display: none;">
-                            API key required for embeddings
+                            ${t('ui.apiKeyRequired')}
                         </div>
                     </div>
 
                     <div class="card">
-                        <div class="card-title">📊 Statistics</div>
+                        <div class="card-title">📊 ${t('profile.stats', {})}</div>
                         
                         <div class="stat-item">
-                            <span class="stat-label">Files tracked</span>
+                            <span class="stat-label">${t('ui.filesTracked')}</span>
                             <span class="stat-value" id="trackedFiles-${profile.id}">${stats.trackedFiles || 0}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Total chunks</span>
+                            <span class="stat-label">${t('ui.totalChunks')}</span>
                             <span class="stat-value" id="totalChunks-${profile.id}">${stats.totalChunks || 0}</span>
                         </div>
-                        <button class="btn-secondary" style="width: 100%; margin-top: 12px;" id="browseDbBtn-${profile.id}">Browse Database</button>
+                        <button class="btn-secondary" style="width: 100%; margin-top: 12px;" id="browseDbBtn-${profile.id}">${t('ui.browseDatabase')}</button>
                     </div>
 
                     <div class="actions">
-                        <button class="btn-primary ${stats.isSyncing ? 'btn-danger' : ''}" id="startBtn-${profile.id}">${stats.isSyncing ? 'Stop Sync' : 'Start Syncing'}</button>
+                        <button class="btn-primary ${stats.isSyncing ? 'btn-danger' : ''}" id="startBtn-${profile.id}">${stats.isSyncing ? t('ui.stopSync') : t('ui.startSyncing')}</button>
                     </div>
                 </div>
             `;
@@ -1241,7 +1286,7 @@
                     const warning = document.getElementById(`apiKeyWarning-${profileId}`);
                     if (warning) {
                         warning.classList.remove('error');
-                        warning.textContent = 'API key required for embeddings';
+                        warning.textContent = t('ui.apiKeyRequired');
                     }
                     updateApiKeyWarning(profileId);
                     saveProfileSettings(profileId);
@@ -1258,10 +1303,12 @@
             
             if (selectFolderBtn) {
                 selectFolderBtn.addEventListener('click', () => selectFolder(profileId));
+                selectFolderBtn.textContent = t('profile.selectFolder');
             }
             
             if (selectDatabaseBtn) {
                 selectDatabaseBtn.addEventListener('click', () => selectDatabase(profileId));
+                selectDatabaseBtn.textContent = t('profile.selectDatabase');
             }
             
             if (browseDbBtn) {
@@ -1279,6 +1326,13 @@
                 document.getElementById(`folderPath-${profileId}`).textContent = folder;
                 document.getElementById(`folderPath-${profileId}`).classList.add('has-value');
                 await window.api.updateProfile(profileId, { watchedFolder: folder });
+            } else {
+                // Update display text if cancelled
+                const folderPathEl = document.getElementById(`folderPath-${profileId}`);
+                if (folderPathEl && !folderPathEl.textContent) {
+                    folderPathEl.textContent = t('ui.noFolderSelected');
+                    folderPathEl.classList.remove('has-value');
+                }
             }
         }
 
@@ -1288,6 +1342,13 @@
                 document.getElementById(`databasePath-${profileId}`).textContent = dbPath;
                 document.getElementById(`databasePath-${profileId}`).classList.add('has-value');
                 await window.api.updateProfile(profileId, { databasePath: dbPath });
+            } else {
+                // Update display text if cancelled
+                const dbPathEl = document.getElementById(`databasePath-${profileId}`);
+                if (dbPathEl && !dbPathEl.textContent) {
+                    dbPathEl.textContent = t('ui.noDatabaseSelected');
+                    dbPathEl.classList.remove('has-value');
+                }
             }
         }
 
@@ -1295,9 +1356,12 @@
             const profile = profiles.find(p => p.id === profileId);
             if (!profile) return;
             
+            const folderPathEl = document.getElementById(`folderPath-${profileId}`);
+            const dbPathEl = document.getElementById(`databasePath-${profileId}`);
+            
             const updates = {
-                watchedFolder: document.getElementById(`folderPath-${profileId}`).textContent === 'No folder selected' ? '' : document.getElementById(`folderPath-${profileId}`).textContent,
-                databasePath: document.getElementById(`databasePath-${profileId}`).textContent === 'No database selected' ? '' : document.getElementById(`databasePath-${profileId}`).textContent,
+                watchedFolder: (folderPathEl.textContent === t('ui.noFolderSelected')) ? '' : folderPathEl.textContent,
+                databasePath: (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent,
                 openAIApiKey: document.getElementById(`apiKey-${profileId}`).value,
                 fileExtensions: document.getElementById(`extensions-${profileId}`).value,
                 recursive: document.getElementById(`recursive-${profileId}`).checked
@@ -1315,7 +1379,7 @@
             
             btn.disabled = true;
             const stats = profileStats.get(profileId) || { isSyncing: false };
-            btn.textContent = stats.isSyncing ? 'Stopping...' : 'Syncing...';
+            btn.textContent = stats.isSyncing ? t('ui.stopping') : t('ui.syncing');
             
             try {
                 await saveProfileSettings(profileId);
@@ -1347,8 +1411,8 @@
                 const btn = document.getElementById(`startBtn-${stats.profileId}`);
                 if (btn) {
                     document.getElementById(`statusDot`).classList.toggle('active', stats.isSyncing);
-                    document.getElementById(`statusText`).textContent = stats.isSyncing ? 'Syncing...' : 'Not syncing';
-                    btn.textContent = stats.isSyncing ? 'Stop Sync' : 'Start Syncing';
+                    document.getElementById(`statusText`).textContent = stats.isSyncing ? t('ui.syncing') : t('tray.notSyncing');
+                    btn.textContent = stats.isSyncing ? t('ui.stopSync') : t('ui.startSyncing');
                     btn.className = stats.isSyncing ? 'btn-danger' : 'btn-primary';
                     btn.disabled = false;
                     
@@ -1394,10 +1458,10 @@
             
             if (syncingCount > 0) {
                 statusDot.classList.add('active');
-                statusText.textContent = `${syncingCount} profile(s) syncing`;
+                statusText.textContent = t('tray.syncing', { count: syncingCount });
             } else {
                 statusDot.classList.remove('active');
-                statusText.textContent = 'Not syncing';
+                statusText.textContent = t('tray.notSyncing');
             }
         }
 
@@ -1410,6 +1474,9 @@
             
             if (warning) {
                 warning.style.display = !hasApiKey ? 'block' : 'none';
+                if (!hasApiKey) {
+                    warning.textContent = t('ui.apiKeyRequired');
+                }
             }
             
             const startBtn = document.getElementById(`startBtn-${profileId}`);
@@ -1418,7 +1485,7 @@
                 if (!stats.isSyncing) {
                     startBtn.disabled = !hasApiKey;
                     if (!hasApiKey) {
-                        startBtn.title = 'OpenAI API key required';
+                        startBtn.title = t('ui.apiKeyRequired');
                     } else {
                         startBtn.title = '';
                     }
@@ -1468,7 +1535,7 @@
         // MCP Server functions
         async function toggleMcpServer() {
             if (!activeProfileId) {
-                alert('No active profile selected');
+                alert(t('ui.noActiveProfile'));
                 return;
             }
             
@@ -1480,7 +1547,7 @@
                 if (result.success) {
                     updateMcpStatus(false);
                 } else {
-                    alert('Error stopping MCP server: ' + result.error);
+                    alert(t('ui.errorStoppingMcp') + ': ' + result.error);
                     // Reload status to ensure UI is correct
                     await loadMcpStatus();
                 }
@@ -1489,7 +1556,7 @@
                 if (result.success) {
                     updateMcpStatus(true, result.port);
                 } else {
-                    alert('Error starting MCP server: ' + result.error);
+                    alert(t('ui.errorStartingMcp') + ': ' + result.error);
                     // Reload status to ensure UI is correct
                     const status = await window.api.getMcpStatus(activeProfileId);
                     updateMcpStatus(status.running, status.port);
@@ -1512,17 +1579,17 @@
             const portInput = document.getElementById('mcpPort');
 
             if (running) {
-                btn.textContent = 'Stop Server';
+                btn.textContent = t('mcp.stopServer');
                 btn.className = 'btn-danger';
-                status.innerHTML = `<span style="color: #34c759;">● Running on port ${port || (portInput ? portInput.value : '')}</span>`;
+                status.innerHTML = `<span style="color: #34c759;">● ${t('mcp.status.running', { port: port || (portInput ? portInput.value : '') })}</span>`;
                 configureBtn.style.display = 'block';
                 if (portInput) {
                     portInput.disabled = true;
                 }
             } else {
-                btn.textContent = 'Start Server';
+                btn.textContent = t('mcp.startServer');
                 btn.className = 'btn-secondary';
-                status.textContent = 'Server stopped';
+                status.textContent = t('mcp.status.stopped');
                 configureBtn.style.display = 'none';
                 // Always enable port input when server is not running
                 if (portInput) {
@@ -1579,7 +1646,7 @@
                             if (currentProfile) {
                                 portInput.value = currentProfile.mcpServerPort || 3333;
                             }
-                            alert('Cannot change port while server is running. Please stop the server first.');
+                            alert(t('ui.cannotChangePortWhileRunning'));
                         }
                     });
                 }
@@ -1699,7 +1766,7 @@
             currentView = 'files';
             const profileId = browserProfileId || activeProfileId;
             const profile = profiles.find(p => p.id === profileId);
-            document.getElementById('modalTitle').textContent = `📂 Browse Database - ${profile?.name || 'Profile'}`;
+            document.getElementById('modalTitle').textContent = `📂 ${t('ui.browseDatabaseTitle')} - ${profile?.name || t('profile.name')}`;
             const body = document.getElementById('modalBody');
             
             // If we have saved tree HTML, restore it instead of rebuilding
@@ -1712,7 +1779,7 @@
             const files = await window.api.getFiles(profileId);
             
             if (files.length === 0) {
-                body.innerHTML = '<div class="empty-state">No files in database yet.<br>Start syncing a folder to add files.</div>';
+                body.innerHTML = `<div class="empty-state">${t('ui.noFilesInDatabase')}</div>`;
                 return;
             }
             
@@ -1883,15 +1950,15 @@
             
             const chunks = await window.api.getChunks(profileId, filePath);
             
-            let html = '<button class="back-btn" onclick="showFileList()">← Back to files</button>';
+            let html = `<button class="back-btn" onclick="showFileList()">${t('ui.backToFiles')}</button>`;
             
             if (chunks.length === 0) {
-                html += '<div class="empty-state">No chunks found for this file.</div>';
+                html += `<div class="empty-state">${t('ui.noChunksFound')}</div>`;
                 body.innerHTML = html;
                 return;
             }
             
-            html += `<div class="chunks-header">${chunks.length} chunks</div>`;
+            html += `<div class="chunks-header">${chunks.length} ${t('ui.chunks')}</div>`;
             html += '<div class="chunks-list">';
             
             for (const chunk of chunks) {
@@ -1930,7 +1997,114 @@
             }
         });
 
+        // Language switching and translations
+        let currentLanguage = 'en';
+        let translations = {};
+        
+        // Simple translation function
+        function t(key, options = {}) {
+            const keys = key.split('.');
+            let value = translations;
+            for (const k of keys) {
+                value = value?.[k];
+                if (value === undefined) return key;
+            }
+            
+            if (typeof value !== 'string') return key;
+            
+            // Simple interpolation
+            if (options && typeof value === 'string') {
+                return value.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+                    return options[key] !== undefined ? options[key] : match;
+                });
+            }
+            
+            return value;
+        }
+        
+        async function loadTranslations(locale) {
+            try {
+                translations = await window.api.getTranslations(locale);
+                return true;
+            } catch (error) {
+                console.error('[i18n] Error loading translations:', error);
+                return false;
+            }
+        }
+        
+        async function initLanguage() {
+            try {
+                currentLanguage = await window.api.getLanguage();
+                document.getElementById('languageSelect').value = currentLanguage;
+                await loadTranslations(currentLanguage);
+                updateUI();
+            } catch (error) {
+                console.error('Error loading language:', error);
+            }
+        }
+
+        async function changeLanguage(locale) {
+            try {
+                const result = await window.api.setLanguage(locale);
+                if (result.success) {
+                    currentLanguage = locale;
+                    await loadTranslations(locale);
+                    updateUI(); // Update all UI elements
+                } else {
+                    alert(t('common.error') + ': ' + (result.error || t('common.unknownError', {})));
+                }
+            } catch (error) {
+                console.error('Error changing language:', error);
+                alert(t('common.error') + ': ' + t('common.errorChangingLanguage', {}));
+            }
+        }
+
+        // Listen for language changes from main process
+        window.api.onLanguageChanged(async (locale) => {
+            currentLanguage = locale;
+            document.getElementById('languageSelect').value = locale;
+            await loadTranslations(locale);
+            updateUI();
+        });
+
+        document.getElementById('languageSelect').addEventListener('change', (e) => {
+            changeLanguage(e.target.value);
+        });
+        
+        // Update all UI elements with translations
+        function updateUI() {
+            // Update header status
+            updateOverallStatus();
+            
+            // Update MCP Server section
+            const mcpTitle = document.querySelector('.card .card-title');
+            if (mcpTitle && mcpTitle.textContent.includes('MCP Server')) {
+                mcpTitle.textContent = `🌐 ${t('mcp.title')}`;
+            }
+            
+            const mcpPortLabel = document.querySelector('label[for="mcpPort"]');
+            if (mcpPortLabel) {
+                mcpPortLabel.textContent = t('mcp.port') + ':';
+            }
+            
+            const mcpToggleBtn = document.getElementById('mcpToggleBtn');
+            if (mcpToggleBtn) {
+                mcpToggleBtn.textContent = mcpRunning ? t('mcp.stopServer') : t('mcp.startServer');
+            }
+            
+            const mcpConfigureBtn = document.getElementById('mcpConfigureBtn');
+            if (mcpConfigureBtn && mcpConfigureBtn.textContent.includes('Configure')) {
+                mcpConfigureBtn.textContent = t('mcp.configureClients', {});
+            }
+            
+            // Update active profile content
+            if (activeProfileId) {
+                renderActiveProfile();
+            }
+        }
+
         // Initialize
+        initLanguage();
         loadProfiles();
     </script>
 </body>

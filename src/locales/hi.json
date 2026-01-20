@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "सक्रिय",
+    "notSyncing": "सिंक नहीं हो रहा",
+    "syncing": "{{count}} प्रोफ़ाइल सिंक हो रही है",
+    "processing": "प्रसंस्करण...",
+    "files": "फ़ाइलें",
+    "chunks": "चंक्स",
+    "profiles": "प्रोफ़ाइल",
+    "showApp": "Docs4ai दिखाएं",
+    "quit": "बाहर निकलें"
+  },
+  "profile": {
+    "name": "प्रोफ़ाइल नाम",
+    "watchedFolder": "निगरानी फ़ोल्डर",
+    "selectFolder": "चुनें...",
+    "databasePath": "डेटाबेस पथ",
+    "selectDatabase": "चुनें...",
+    "openAIApiKey": "OpenAI API कुंजी",
+    "fileExtensions": "फ़ाइल एक्सटेंशन",
+    "recursive": "पुनरावर्ती",
+    "version": "संस्करण",
+    "startSyncing": "सिंक शुरू करें",
+    "stopSyncing": "सिंक रोकें",
+    "createNew": "नई प्रोफ़ाइल बनाएं",
+    "delete": "प्रोफ़ाइल हटाएं",
+    "deleteConfirm": "क्या आप वाकई इस प्रोफ़ाइल को हटाना चाहते हैं?",
+    "settings": "सेटिंग्स",
+    "embeddings": "एम्बेडिंग्स (OpenAI)",
+    "stats": {
+      "trackedFiles": "ट्रैक की गई फ़ाइलें",
+      "totalChunks": "कुल चंक्स"
+    }
+  },
+  "mcp": {
+    "title": "MCP सर्वर",
+    "enabled": "सक्षम",
+    "port": "पोर्ट",
+    "startServer": "सर्वर शुरू करें",
+    "stopServer": "सर्वर रोकें",
+    "configureClients": "क्लाइंट कॉन्फ़िगर करें",
+    "status": {
+      "running": "पोर्ट {{port}} पर चल रहा है",
+      "stopped": "रुका हुआ"
+    }
+  },
+  "common": {
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "ok": "ठीक",
+    "error": "त्रुटि",
+    "success": "सफल",
+    "unknownError": "अज्ञात त्रुटि",
+    "errorChangingLanguage": "भाषा बदलने में त्रुटि"
+  },
+  "ui": {
+    "noProfileSelected": "कोई प्रोफ़ाइल चयनित नहीं",
+    "noFolderSelected": "कोई फ़ोल्डर चयनित नहीं",
+    "noDatabaseSelected": "कोई डेटाबेस चयनित नहीं",
+    "watchSubdirectories": "उपनिर्देशिकाएं देखें",
+    "fileExtensions": "फ़ाइल एक्सटेंशन",
+    "apiKey": "API कुंजी",
+    "apiKeyRequired": "एम्बेडिंग्स के लिए API कुंजी आवश्यक",
+    "usesEmbedding": "text-embedding-3-large (3072 आयाम) का उपयोग करता है",
+    "filesTracked": "ट्रैक की गई फ़ाइलें",
+    "totalChunks": "कुल चंक्स",
+    "browseDatabase": "डेटाबेस ब्राउज़ करें",
+    "stopSync": "सिंक रोकें",
+    "startSyncing": "सिंक शुरू करें",
+    "stopping": "रोक रहा है...",
+    "syncing": "सिंक हो रहा है...",
+    "addNewProfile": "नई प्रोफ़ाइल जोड़ें",
+    "newProfile": "नई प्रोफ़ाइल",
+    "enterProfileName": "प्रोफ़ाइल नाम दर्ज करें",
+    "profileNameCannotBeEmpty": "प्रोफ़ाइल नाम खाली नहीं हो सकता",
+    "cannotDeleteLastProfile": "अंतिम प्रोफ़ाइल हटाया नहीं जा सकता। कृपया पहले दूसरी प्रोफ़ाइल बनाएं।",
+    "deleteProfileConfirm": "क्या आप वाकई इस प्रोफ़ाइल को हटाना चाहते हैं?",
+    "noActiveProfile": "कोई सक्रिय प्रोफ़ाइल चयनित नहीं",
+    "errorStoppingMcp": "MCP सर्वर रोकने में त्रुटि",
+    "errorStartingMcp": "MCP सर्वर शुरू करने में त्रुटि",
+    "cannotChangePortWhileRunning": "सर्वर चलते समय पोर्ट नहीं बदला जा सकता। कृपया पहले सर्वर रोकें।",
+    "noFilesInDatabase": "डेटाबेस में अभी तक कोई फ़ाइल नहीं है।<br>फ़ाइलें जोड़ने के लिए एक फ़ोल्डर सिंक करना शुरू करें।",
+    "browseDatabaseTitle": "डेटाबेस ब्राउज़ करें",
+    "backToFiles": "← फ़ाइलों पर वापस",
+    "noChunksFound": "इस फ़ाइल के लिए कोई चंक नहीं मिला।",
+    "chunks": "चंक्स"
+  }
+}

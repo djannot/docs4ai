@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "Aktiv",
+    "notSyncing": "Nicht synchronisiert",
+    "syncing": "{{count}} Profil(e) synchronisieren",
+    "processing": "Verarbeitung...",
+    "files": "Dateien",
+    "chunks": "Chunks",
+    "profiles": "Profile",
+    "showApp": "Docs4ai anzeigen",
+    "quit": "Beenden"
+  },
+  "profile": {
+    "name": "Profilname",
+    "watchedFolder": "Überwachter Ordner",
+    "selectFolder": "Auswählen...",
+    "databasePath": "Datenbankpfad",
+    "selectDatabase": "Auswählen...",
+    "openAIApiKey": "OpenAI API-Schlüssel",
+    "fileExtensions": "Dateierweiterungen",
+    "recursive": "Rekursiv",
+    "version": "Version",
+    "startSyncing": "Synchronisierung starten",
+    "stopSyncing": "Synchronisierung stoppen",
+    "createNew": "Neues Profil erstellen",
+    "delete": "Profil löschen",
+    "deleteConfirm": "Sind Sie sicher, dass Sie dieses Profil löschen möchten?",
+    "settings": "Einstellungen",
+    "embeddings": "Einbettungen (OpenAI)",
+    "stats": {
+      "trackedFiles": "Verfolgte Dateien",
+      "totalChunks": "Gesamt-Chunks"
+    }
+  },
+  "mcp": {
+    "title": "MCP-Server",
+    "enabled": "Aktiviert",
+    "port": "Port",
+    "startServer": "Server starten",
+    "stopServer": "Server stoppen",
+    "configureClients": "Clients konfigurieren",
+    "status": {
+      "running": "Läuft auf Port {{port}}",
+      "stopped": "Gestoppt"
+    }
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "ok": "OK",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "unknownError": "Unbekannter Fehler",
+    "errorChangingLanguage": "Fehler beim Ändern der Sprache"
+  },
+  "ui": {
+    "noProfileSelected": "Kein Profil ausgewählt",
+    "noFolderSelected": "Kein Ordner ausgewählt",
+    "noDatabaseSelected": "Keine Datenbank ausgewählt",
+    "watchSubdirectories": "Unterverzeichnisse überwachen",
+    "fileExtensions": "Dateierweiterungen",
+    "apiKey": "API-Schlüssel",
+    "apiKeyRequired": "API-Schlüssel für Einbettungen erforderlich",
+    "usesEmbedding": "Verwendet text-embedding-3-large (3072 Dimensionen)",
+    "filesTracked": "Verfolgte Dateien",
+    "totalChunks": "Gesamt-Chunks",
+    "browseDatabase": "Datenbank durchsuchen",
+    "stopSync": "Synchronisierung stoppen",
+    "startSyncing": "Synchronisierung starten",
+    "stopping": "Wird gestoppt...",
+    "syncing": "Wird synchronisiert...",
+    "addNewProfile": "Neues Profil hinzufügen",
+    "newProfile": "Neues Profil",
+    "enterProfileName": "Profilname eingeben",
+    "profileNameCannotBeEmpty": "Der Profilname darf nicht leer sein",
+    "cannotDeleteLastProfile": "Das letzte Profil kann nicht gelöscht werden. Bitte erstellen Sie zuerst ein anderes Profil.",
+    "deleteProfileConfirm": "Sind Sie sicher, dass Sie dieses Profil löschen möchten?",
+    "noActiveProfile": "Kein aktives Profil ausgewählt",
+    "errorStoppingMcp": "Fehler beim Stoppen des MCP-Servers",
+    "errorStartingMcp": "Fehler beim Starten des MCP-Servers",
+    "cannotChangePortWhileRunning": "Der Port kann nicht geändert werden, während der Server läuft. Bitte stoppen Sie den Server zuerst.",
+    "noFilesInDatabase": "Noch keine Dateien in der Datenbank.<br>Starten Sie die Synchronisierung eines Ordners, um Dateien hinzuzufügen.",
+    "browseDatabaseTitle": "Datenbank durchsuchen",
+    "backToFiles": "← Zurück zu Dateien",
+    "noChunksFound": "Keine Chunks für diese Datei gefunden.",
+    "chunks": "Chunks"
+  }
+}

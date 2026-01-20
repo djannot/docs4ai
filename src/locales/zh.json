@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "活动",
+    "notSyncing": "未同步",
+    "syncing": "{{count}} 个配置文件正在同步",
+    "processing": "处理中...",
+    "files": "文件",
+    "chunks": "块",
+    "profiles": "配置文件",
+    "showApp": "显示 Docs4ai",
+    "quit": "退出"
+  },
+  "profile": {
+    "name": "配置文件名称",
+    "watchedFolder": "监视文件夹",
+    "selectFolder": "选择...",
+    "databasePath": "数据库路径",
+    "selectDatabase": "选择...",
+    "openAIApiKey": "OpenAI API 密钥",
+    "fileExtensions": "文件扩展名",
+    "recursive": "递归",
+    "version": "版本",
+    "startSyncing": "开始同步",
+    "stopSyncing": "停止同步",
+    "createNew": "创建新配置文件",
+    "delete": "删除配置文件",
+    "deleteConfirm": "您确定要删除此配置文件吗？",
+    "settings": "设置",
+    "embeddings": "嵌入 (OpenAI)",
+    "stats": {
+      "trackedFiles": "跟踪的文件",
+      "totalChunks": "总块数"
+    }
+  },
+  "mcp": {
+    "title": "MCP 服务器",
+    "enabled": "已启用",
+    "port": "端口",
+    "startServer": "启动服务器",
+    "stopServer": "停止服务器",
+    "configureClients": "配置客户端",
+    "status": {
+      "running": "在端口 {{port}} 上运行",
+      "stopped": "已停止"
+    }
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "ok": "确定",
+    "error": "错误",
+    "success": "成功",
+    "unknownError": "未知错误",
+    "errorChangingLanguage": "更改语言时出错"
+  },
+  "ui": {
+    "noProfileSelected": "未选择配置文件",
+    "noFolderSelected": "未选择文件夹",
+    "noDatabaseSelected": "未选择数据库",
+    "watchSubdirectories": "监视子目录",
+    "fileExtensions": "文件扩展名",
+    "apiKey": "API 密钥",
+    "apiKeyRequired": "嵌入需要 API 密钥",
+    "usesEmbedding": "使用 text-embedding-3-large (3072 维)",
+    "filesTracked": "跟踪的文件",
+    "totalChunks": "总块数",
+    "browseDatabase": "浏览数据库",
+    "stopSync": "停止同步",
+    "startSyncing": "开始同步",
+    "stopping": "正在停止...",
+    "syncing": "正在同步...",
+    "addNewProfile": "添加新配置文件",
+    "newProfile": "新配置文件",
+    "enterProfileName": "输入配置文件名称",
+    "profileNameCannotBeEmpty": "配置文件名称不能为空",
+    "cannotDeleteLastProfile": "无法删除最后一个配置文件。请先创建另一个配置文件。",
+    "deleteProfileConfirm": "您确定要删除此配置文件吗？",
+    "noActiveProfile": "未选择活动配置文件",
+    "errorStoppingMcp": "停止 MCP 服务器时出错",
+    "errorStartingMcp": "启动 MCP 服务器时出错",
+    "cannotChangePortWhileRunning": "服务器运行时无法更改端口。请先停止服务器。",
+    "noFilesInDatabase": "数据库中还没有文件。<br>开始同步文件夹以添加文件。",
+    "browseDatabaseTitle": "浏览数据库",
+    "backToFiles": "← 返回文件",
+    "noChunksFound": "未找到此文件的块。",
+    "chunks": "块"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "Attivo",
+    "notSyncing": "Non sincronizzato",
+    "syncing": "{{count}} profilo/i in sincronizzazione",
+    "processing": "Elaborazione...",
+    "files": "File",
+    "chunks": "Chunk",
+    "profiles": "Profili",
+    "showApp": "Mostra Docs4ai",
+    "quit": "Esci"
+  },
+  "profile": {
+    "name": "Nome profilo",
+    "watchedFolder": "Cartella monitorata",
+    "selectFolder": "Seleziona...",
+    "databasePath": "Percorso database",
+    "selectDatabase": "Seleziona...",
+    "openAIApiKey": "Chiave API OpenAI",
+    "fileExtensions": "Estensioni file",
+    "recursive": "Ricorsivo",
+    "version": "Versione",
+    "startSyncing": "Avvia sincronizzazione",
+    "stopSyncing": "Interrompi sincronizzazione",
+    "createNew": "Crea nuovo profilo",
+    "delete": "Elimina profilo",
+    "deleteConfirm": "Sei sicuro di voler eliminare questo profilo?",
+    "settings": "Impostazioni",
+    "embeddings": "Embeddings (OpenAI)",
+    "stats": {
+      "trackedFiles": "File tracciati",
+      "totalChunks": "Chunk totali"
+    }
+  },
+  "mcp": {
+    "title": "Server MCP",
+    "enabled": "Abilitato",
+    "port": "Porta",
+    "startServer": "Avvia server",
+    "stopServer": "Ferma server",
+    "configureClients": "Configura client",
+    "status": {
+      "running": "In esecuzione sulla porta {{port}}",
+      "stopped": "Fermato"
+    }
+  },
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "ok": "OK",
+    "error": "Errore",
+    "success": "Successo",
+    "unknownError": "Errore sconosciuto",
+    "errorChangingLanguage": "Errore durante la modifica della lingua"
+  },
+  "ui": {
+    "noProfileSelected": "Nessun profilo selezionato",
+    "noFolderSelected": "Nessuna cartella selezionata",
+    "noDatabaseSelected": "Nessun database selezionato",
+    "watchSubdirectories": "Monitora sottocartelle",
+    "fileExtensions": "Estensioni file",
+    "apiKey": "Chiave API",
+    "apiKeyRequired": "Chiave API richiesta per gli embeddings",
+    "usesEmbedding": "Usa text-embedding-3-large (3072 dimensioni)",
+    "filesTracked": "File tracciati",
+    "totalChunks": "Chunk totali",
+    "browseDatabase": "Sfoglia database",
+    "stopSync": "Interrompi sincronizzazione",
+    "startSyncing": "Avvia sincronizzazione",
+    "stopping": "Interruzione...",
+    "syncing": "Sincronizzazione...",
+    "addNewProfile": "Aggiungi nuovo profilo",
+    "newProfile": "Nuovo profilo",
+    "enterProfileName": "Inserisci nome profilo",
+    "profileNameCannotBeEmpty": "Il nome del profilo non può essere vuoto",
+    "cannotDeleteLastProfile": "Impossibile eliminare l'ultimo profilo. Si prega di creare prima un altro profilo.",
+    "deleteProfileConfirm": "Sei sicuro di voler eliminare questo profilo?",
+    "noActiveProfile": "Nessun profilo attivo selezionato",
+    "errorStoppingMcp": "Errore durante l'arresto del server MCP",
+    "errorStartingMcp": "Errore durante l'avvio del server MCP",
+    "cannotChangePortWhileRunning": "Impossibile modificare la porta mentre il server è in esecuzione. Si prega di fermare prima il server.",
+    "noFilesInDatabase": "Nessun file nel database ancora.<br>Avvia la sincronizzazione di una cartella per aggiungere file.",
+    "browseDatabaseTitle": "Sfoglia database",
+    "backToFiles": "← Torna ai file",
+    "noChunksFound": "Nessun chunk trovato per questo file.",
+    "chunks": "chunk"
+  }
+}

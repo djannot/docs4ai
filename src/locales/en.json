@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "Active",
+    "notSyncing": "Not syncing",
+    "syncing": "{{count}} profile(s) syncing",
+    "processing": "Processing...",
+    "files": "Files",
+    "chunks": "Chunks",
+    "profiles": "Profiles",
+    "showApp": "Show Docs4ai",
+    "quit": "Quit"
+  },
+  "profile": {
+    "name": "Profile Name",
+    "watchedFolder": "Watched Folder",
+    "selectFolder": "Select...",
+    "databasePath": "Database Path",
+    "selectDatabase": "Select...",
+    "openAIApiKey": "OpenAI API Key",
+    "fileExtensions": "File Extensions",
+    "recursive": "Recursive",
+    "version": "Version",
+    "startSyncing": "Start Syncing",
+    "stopSyncing": "Stop Syncing",
+    "createNew": "Create New Profile",
+    "delete": "Delete Profile",
+    "deleteConfirm": "Are you sure you want to delete this profile?",
+    "settings": "Settings",
+    "embeddings": "Embeddings (OpenAI)",
+    "stats": {
+      "trackedFiles": "Tracked Files",
+      "totalChunks": "Total Chunks"
+    }
+  },
+  "mcp": {
+    "title": "MCP Server",
+    "enabled": "Enabled",
+    "port": "Port",
+    "startServer": "Start Server",
+    "stopServer": "Stop Server",
+    "configureClients": "Configure Clients",
+    "status": {
+      "running": "Running on port {{port}}",
+      "stopped": "Stopped"
+    }
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "error": "Error",
+    "success": "Success",
+    "unknownError": "Unknown error",
+    "errorChangingLanguage": "Error changing language"
+  },
+  "ui": {
+    "noProfileSelected": "No profile selected",
+    "noFolderSelected": "No folder selected",
+    "noDatabaseSelected": "No database selected",
+    "watchSubdirectories": "Watch subdirectories",
+    "fileExtensions": "File extensions",
+    "apiKey": "API Key",
+    "apiKeyRequired": "API key required for embeddings",
+    "usesEmbedding": "Uses text-embedding-3-large (3072 dimensions)",
+    "filesTracked": "Files tracked",
+    "totalChunks": "Total chunks",
+    "browseDatabase": "Browse Database",
+    "stopSync": "Stop Sync",
+    "startSyncing": "Start Syncing",
+    "stopping": "Stopping...",
+    "syncing": "Syncing...",
+    "addNewProfile": "Add new profile",
+    "newProfile": "New Profile",
+    "enterProfileName": "Enter profile name",
+    "profileNameCannotBeEmpty": "Profile name cannot be empty",
+    "cannotDeleteLastProfile": "Cannot delete the last profile. Please create another profile first.",
+    "deleteProfileConfirm": "Are you sure you want to delete this profile?",
+    "noActiveProfile": "No active profile selected",
+    "errorStoppingMcp": "Error stopping MCP server",
+    "errorStartingMcp": "Error starting MCP server",
+    "cannotChangePortWhileRunning": "Cannot change port while server is running. Please stop the server first.",
+    "noFilesInDatabase": "No files in database yet.<br>Start syncing a folder to add files.",
+    "browseDatabaseTitle": "Browse Database",
+    "backToFiles": "← Back to files",
+    "noChunksFound": "No chunks found for this file.",
+    "chunks": "chunks"
+  }
+}

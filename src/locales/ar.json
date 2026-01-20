@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "نشط",
+    "notSyncing": "غير متزامن",
+    "syncing": "{{count}} ملف تعريف قيد المزامنة",
+    "processing": "جاري المعالجة...",
+    "files": "الملفات",
+    "chunks": "الأجزاء",
+    "profiles": "ملفات التعريف",
+    "showApp": "إظهار Docs4ai",
+    "quit": "خروج"
+  },
+  "profile": {
+    "name": "اسم الملف الشخصي",
+    "watchedFolder": "المجلد المراقب",
+    "selectFolder": "اختر...",
+    "databasePath": "مسار قاعدة البيانات",
+    "selectDatabase": "اختر...",
+    "openAIApiKey": "مفتاح OpenAI API",
+    "fileExtensions": "امتدادات الملفات",
+    "recursive": "متكرر",
+    "version": "الإصدار",
+    "startSyncing": "بدء المزامنة",
+    "stopSyncing": "إيقاف المزامنة",
+    "createNew": "إنشاء ملف تعريف جديد",
+    "delete": "حذف الملف الشخصي",
+    "deleteConfirm": "هل أنت متأكد من حذف هذا الملف الشخصي؟",
+    "settings": "الإعدادات",
+    "embeddings": "التضمينات (OpenAI)",
+    "stats": {
+      "trackedFiles": "الملفات المتتبعة",
+      "totalChunks": "إجمالي الأجزاء"
+    }
+  },
+  "mcp": {
+    "title": "خادم MCP",
+    "enabled": "مفعل",
+    "port": "المنفذ",
+    "startServer": "بدء الخادم",
+    "stopServer": "إيقاف الخادم",
+    "configureClients": "تكوين العملاء",
+    "status": {
+      "running": "يعمل على المنفذ {{port}}",
+      "stopped": "متوقف"
+    }
+  },
+  "common": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "ok": "موافق",
+    "error": "خطأ",
+    "success": "نجح",
+    "unknownError": "خطأ غير معروف",
+    "errorChangingLanguage": "خطأ في تغيير اللغة"
+  },
+  "ui": {
+    "noProfileSelected": "لم يتم تحديد ملف تعريف",
+    "noFolderSelected": "لم يتم تحديد مجلد",
+    "noDatabaseSelected": "لم يتم تحديد قاعدة بيانات",
+    "watchSubdirectories": "مراقبة المجلدات الفرعية",
+    "fileExtensions": "امتدادات الملفات",
+    "apiKey": "مفتاح API",
+    "apiKeyRequired": "مفتاح API مطلوب للتضمينات",
+    "usesEmbedding": "يستخدم text-embedding-3-large (3072 بُعد)",
+    "filesTracked": "الملفات المتتبعة",
+    "totalChunks": "إجمالي الأجزاء",
+    "browseDatabase": "تصفح قاعدة البيانات",
+    "stopSync": "إيقاف المزامنة",
+    "startSyncing": "بدء المزامنة",
+    "stopping": "جاري الإيقاف...",
+    "syncing": "جاري المزامنة...",
+    "addNewProfile": "إضافة ملف تعريف جديد",
+    "newProfile": "ملف تعريف جديد",
+    "enterProfileName": "أدخل اسم الملف الشخصي",
+    "profileNameCannotBeEmpty": "لا يمكن أن يكون اسم الملف الشخصي فارغًا",
+    "cannotDeleteLastProfile": "لا يمكن حذف ملف التعريف الأخير. يرجى إنشاء ملف تعريف آخر أولاً.",
+    "deleteProfileConfirm": "هل أنت متأكد من حذف هذا الملف الشخصي؟",
+    "noActiveProfile": "لم يتم تحديد ملف تعريف نشط",
+    "errorStoppingMcp": "خطأ في إيقاف خادم MCP",
+    "errorStartingMcp": "خطأ في بدء خادم MCP",
+    "cannotChangePortWhileRunning": "لا يمكن تغيير المنفذ أثناء تشغيل الخادم. يرجى إيقاف الخادم أولاً.",
+    "noFilesInDatabase": "لا توجد ملفات في قاعدة البيانات بعد.<br>ابدأ مزامنة مجلد لإضافة الملفات.",
+    "browseDatabaseTitle": "تصفح قاعدة البيانات",
+    "backToFiles": "← العودة إلى الملفات",
+    "noChunksFound": "لم يتم العثور على أجزاء لهذا الملف.",
+    "chunks": "أجزاء"
+  }
+}

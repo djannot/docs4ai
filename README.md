@@ -11,6 +11,8 @@ A native desktop application that watches a folder and automatically syncs it wi
 - **Cross-platform** - Runs natively on Mac, Windows, and Linux
 - **Menu bar/system tray** - Status indicator with sync state
 - **Multiple file formats** - Markdown, text, HTML, PDF, DOC, DOCX
+- **Multi-language support** - UI available in 9 languages with instant switching
+- **Multiple profiles** - Manage multiple independent sync configurations
 
 ## Supported File Types
 
@@ -82,13 +84,42 @@ Built applications are output to the `release/` directory.
 ## Usage
 
 1. **Launch the app** - Run `npm start` or the built application
-2. **Select Watch Folder** - Click "Select..." to choose a folder to monitor
-3. **Select Database** - Choose where to save the sqlite-vec database
-4. **Configure Settings**:
+2. **Select Language** (optional) - Choose your preferred language from the dropdown in the header
+3. **Create/Select Profile** - Use the profile tabs to manage multiple sync configurations
+4. **Select Watch Folder** - Click "Select..." to choose a folder to monitor
+5. **Select Database** - Choose where to save the sqlite-vec database
+6. **Configure Settings**:
    - File extensions to watch
-   - Version (for metadata)
+   - Recursive folder watching
    - OpenAI API key for embeddings
-5. **Click "Start Sync"** - The app syncs and monitors for changes
+7. **Click "Start Syncing"** - The app syncs and monitors for changes
+
+### Multi-Profile Support
+
+The app supports multiple independent profiles, each with its own:
+- Watched folder
+- Database path
+- API key
+- File extensions
+- MCP server port
+
+Create new profiles using the "+" button in the profile tabs. Switch between profiles by clicking on the tabs.
+
+## Multi-Language Support
+
+Docs4ai supports **9 languages** with instant switching (no restart required):
+
+- 🇬🇧 English
+- 🇫🇷 Français (French)
+- 🇪🇸 Español (Spanish)
+- 🇨🇳 中文 (Chinese/Mandarin)
+- 🇮🇳 हिन्दी (Hindi)
+- 🇸🇦 العربية (Arabic)
+- 🇩🇪 Deutsch (German)
+- 🇮🇹 Italiano (Italian)
+- 🇵🇹 Português (Portuguese)
+
+Change the language using the dropdown in the header. The UI and tray menu update immediately. Your language preference is saved and persists across app restarts.
 
 ## Menu Bar Icon
 
@@ -98,7 +129,7 @@ The app shows a status indicator in the menu bar/system tray:
 - **Green dot** - Syncing (active)
 - **Orange dot** - Currently processing a file
 
-Right-click for quick access to status and controls.
+Right-click for quick access to status, profile switching, and controls.
 
 ## Built-in MCP Server
 

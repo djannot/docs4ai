@@ -1,0 +1,93 @@
+{
+  "app": {
+    "name": "Docs4ai",
+    "title": "Docs4ai"
+  },
+  "tray": {
+    "tooltip": "Docs4ai",
+    "active": "Ativo",
+    "notSyncing": "Não sincronizando",
+    "syncing": "{{count}} perfil(is) sincronizando",
+    "processing": "Processando...",
+    "files": "Arquivos",
+    "chunks": "Fragmentos",
+    "profiles": "Perfis",
+    "showApp": "Mostrar Docs4ai",
+    "quit": "Sair"
+  },
+  "profile": {
+    "name": "Nome do Perfil",
+    "watchedFolder": "Pasta Monitorada",
+    "selectFolder": "Selecionar...",
+    "databasePath": "Caminho do Banco de Dados",
+    "selectDatabase": "Selecionar...",
+    "openAIApiKey": "Chave API OpenAI",
+    "fileExtensions": "Extensões de Arquivo",
+    "recursive": "Recursivo",
+    "version": "Versão",
+    "startSyncing": "Iniciar Sincronização",
+    "stopSyncing": "Parar Sincronização",
+    "createNew": "Criar Novo Perfil",
+    "delete": "Excluir Perfil",
+    "deleteConfirm": "Tem certeza de que deseja excluir este perfil?",
+    "settings": "Configurações",
+    "embeddings": "Embeddings (OpenAI)",
+    "stats": {
+      "trackedFiles": "Arquivos Rastreados",
+      "totalChunks": "Total de Fragmentos"
+    }
+  },
+  "mcp": {
+    "title": "Servidor MCP",
+    "enabled": "Habilitado",
+    "port": "Porta",
+    "startServer": "Iniciar Servidor",
+    "stopServer": "Parar Servidor",
+    "configureClients": "Configurar Clientes",
+    "status": {
+      "running": "Executando na porta {{port}}",
+      "stopped": "Parado"
+    }
+  },
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "ok": "OK",
+    "error": "Erro",
+    "success": "Sucesso",
+    "unknownError": "Erro desconhecido",
+    "errorChangingLanguage": "Erro ao alterar idioma"
+  },
+  "ui": {
+    "noProfileSelected": "Nenhum perfil selecionado",
+    "noFolderSelected": "Nenhuma pasta selecionada",
+    "noDatabaseSelected": "Nenhum banco de dados selecionado",
+    "watchSubdirectories": "Monitorar subdiretórios",
+    "fileExtensions": "Extensões de arquivo",
+    "apiKey": "Chave API",
+    "apiKeyRequired": "Chave API necessária para embeddings",
+    "usesEmbedding": "Usa text-embedding-3-large (3072 dimensões)",
+    "filesTracked": "Arquivos rastreados",
+    "totalChunks": "Total de fragmentos",
+    "browseDatabase": "Navegar Banco de Dados",
+    "stopSync": "Parar Sincronização",
+    "startSyncing": "Iniciar Sincronização",
+    "stopping": "Parando...",
+    "syncing": "Sincronizando...",
+    "addNewProfile": "Adicionar novo perfil",
+    "newProfile": "Novo Perfil",
+    "enterProfileName": "Digite o nome do perfil",
+    "profileNameCannotBeEmpty": "O nome do perfil não pode estar vazio",
+    "cannotDeleteLastProfile": "Não é possível excluir o último perfil. Por favor, crie outro perfil primeiro.",
+    "deleteProfileConfirm": "Tem certeza de que deseja excluir este perfil?",
+    "noActiveProfile": "Nenhum perfil ativo selecionado",
+    "errorStoppingMcp": "Erro ao parar servidor MCP",
+    "errorStartingMcp": "Erro ao iniciar servidor MCP",
+    "cannotChangePortWhileRunning": "Não é possível alterar a porta enquanto o servidor está em execução. Por favor, pare o servidor primeiro.",
+    "noFilesInDatabase": "Ainda não há arquivos no banco de dados.<br>Inicie a sincronização de uma pasta para adicionar arquivos.",
+    "browseDatabaseTitle": "Navegar Banco de Dados",
+    "backToFiles": "← Voltar para arquivos",
+    "noChunksFound": "Nenhum fragmento encontrado para este arquivo.",
+    "chunks": "fragmentos"
+  }
+}

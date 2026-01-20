@@ -7,6 +7,7 @@ import { DatabaseManager } from './database';
 import { ContentProcessor } from './processor';
 import { EmbeddingService, InvalidApiKeyError } from './embeddings';
 import { McpServer } from './mcp-server';
+import { initI18n, t, changeLanguage, getCurrentLanguage, getAvailableLanguages, isInitialized } from './i18n';
 
 interface ProfileSettings {
     id: string;
@@ -23,6 +24,7 @@ interface ProfileSettings {
 interface AppSettings {
     profiles: ProfileSettings[];
     activeProfileId: string | null;
+    language?: string;
 }
 
 interface ProfileState {
@@ -40,7 +42,8 @@ interface ProfileState {
 const store = new Store<AppSettings>({
     defaults: {
         profiles: [],
-        activeProfileId: null
+        activeProfileId: null,
+        language: undefined // Will use system locale if undefined
     }
 });
 
@@ -196,6 +199,14 @@ function getOverallStatus(): { state: 'idle' | 'syncing' | 'processing', totalFi
 function updateTray() {
     if (!tray) return;
     
+    // Ensure i18n is initialized before using translations
+    if (!isInitialized()) {
+        console.warn('i18n not initialized yet, using fallback text');
+        // Use fallback English text if i18n not ready
+        tray.setToolTip('Docs4ai');
+        return;
+    }
+    
     const overall = getOverallStatus();
     const state = overall.state;
     const appSettings = store.store;
@@ -203,39 +214,41 @@ function updateTray() {
     
     tray.setImage(createTrayIcon(state));
     
-    // Build tooltip with profile info
-    let tooltip = 'Docs4ai';
+    // Build tooltip with profile info (using translations)
+    let tooltip = t('app.name');
     if (activeProfile) {
         tooltip += ` - ${activeProfile.name}`;
     }
     if (overall.state === 'processing') {
-        tooltip += ' - Processing...';
+        tooltip += ` - ${t('tray.processing')}`;
     } else if (overall.syncingCount > 0) {
-        tooltip += ` - ${overall.syncingCount} profile(s) syncing`;
+        tooltip += ` - ${t('tray.syncing', { count: overall.syncingCount })}`;
     } else {
-        tooltip += ' - Not syncing';
+        tooltip += ` - ${t('tray.notSyncing')}`;
     }
     tray.setToolTip(tooltip);
     
-    // Build context menu with profile information
+    // Build context menu with profile information (using translations)
     const menuItems: Electron.MenuItemConstructorOptions[] = [];
     
     // Active profile info
     if (activeProfile) {
         menuItems.push({
-            label: `Active: ${activeProfile.name}`,
+            label: `${t('tray.active')}: ${activeProfile.name}`,
             enabled: false
         });
     }
     
     // Overall status
     menuItems.push({
-        label: overall.syncingCount > 0 ? `● ${overall.syncingCount} profile(s) syncing` : '○ Not syncing',
+        label: overall.syncingCount > 0 
+            ? `● ${t('tray.syncing', { count: overall.syncingCount })}` 
+            : `○ ${t('tray.notSyncing')}`,
         enabled: false
     });
     
     menuItems.push({
-        label: `Files: ${overall.totalFiles} | Chunks: ${overall.totalChunks}`,
+        label: `${t('tray.files')}: ${overall.totalFiles} | ${t('tray.chunks')}: ${overall.totalChunks}`,
         enabled: false
     });
     
@@ -243,7 +256,7 @@ function updateTray() {
     if (appSettings.profiles && appSettings.profiles.length > 0) {
         menuItems.push({ type: 'separator' });
         menuItems.push({
-            label: 'Profiles:',
+            label: `${t('tray.profiles')}:`,
             enabled: false
         });
         
@@ -254,7 +267,7 @@ function updateTray() {
             const prefix = isActive ? '→ ' : (isSyncing ? '● ' : '○ ');
             
             menuItems.push({
-                label: `${prefix}${profile.name}${isSyncing ? ` (${profileState?.processedCount || 0} files)` : ''}`,
+                label: `${prefix}${profile.name}${isSyncing ? ` (${profileState?.processedCount || 0} ${t('tray.files').toLowerCase()})` : ''}`,
                 enabled: true,
                 click: () => {
                     if (mainWindow) {
@@ -268,9 +281,9 @@ function updateTray() {
     }
     
     menuItems.push({ type: 'separator' });
-    menuItems.push({ label: 'Show Docs4ai', click: () => mainWindow?.show() });
+    menuItems.push({ label: t('tray.showApp'), click: () => mainWindow?.show() });
     menuItems.push({ type: 'separator' });
-    menuItems.push({ label: 'Quit', click: () => app.quit() });
+    menuItems.push({ label: t('tray.quit'), click: () => app.quit() });
     
     const contextMenu = Menu.buildFromTemplate(menuItems);
     tray.setContextMenu(contextMenu);
@@ -738,6 +751,53 @@ function setupIpcHandlers() {
         sendStats(profileId);
         return { success: true };
     });
+
+    // Get current language
+    ipcMain.handle('get-language', () => {
+        return getCurrentLanguage();
+    });
+
+    // Get available languages
+    ipcMain.handle('get-available-languages', () => {
+        return getAvailableLanguages();
+    });
+
+    // Get translations for renderer process
+    ipcMain.handle('get-translations', async (_event: IpcMainInvokeEvent, locale?: string) => {
+        const targetLocale = locale || getCurrentLanguage();
+        const fs = require('fs');
+        const translationsPath = path.join(__dirname, 'locales', `${targetLocale}.json`);
+        try {
+            const translations = JSON.parse(fs.readFileSync(translationsPath, 'utf-8'));
+            return translations;
+        } catch (error) {
+            // Fallback to English
+            const fallbackPath = path.join(__dirname, 'locales', 'en.json');
+            const fallback = JSON.parse(fs.readFileSync(fallbackPath, 'utf-8'));
+            return fallback;
+        }
+    });
+
+    // Set language
+    ipcMain.handle('set-language', async (_event: IpcMainInvokeEvent, locale: string) => {
+        try {
+            await changeLanguage(locale);
+            const appSettings = store.store;
+            appSettings.language = locale;
+            store.store = appSettings;
+            updateTray(); // Update tray menu with new language
+            
+            // Notify renderer that language changed
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('language-changed', locale);
+            }
+            
+            return { success: true, language: locale };
+        } catch (error: any) {
+            console.error('[i18n] Error changing language:', error);
+            return { success: false, error: error.message };
+        }
+    });
 }
 
 // Internal function to start watching a profile
@@ -1071,7 +1131,11 @@ function handleInvalidApiKey(profileId: string) {
     updateTray();
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    // Initialize i18n before creating UI
+    const appSettings = store.store;
+    await initI18n(appSettings.language);
+    
     // Prevent app from quitting when all windows are closed (for tray support on Linux/macOS)
     app.on('window-all-closed', () => {
         // On macOS and Linux, keep the app running when windows are closed (runs in tray)

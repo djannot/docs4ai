@@ -40,5 +40,12 @@ contextBridge.exposeInMainWorld('api', {
     },
     onSwitchProfile: (callback: (profileId: string) => void) => {
         ipcRenderer.on('switch-profile', (_event: IpcRendererEvent, profileId: string) => callback(profileId));
+    },
+    getLanguage: () => ipcRenderer.invoke('get-language'),
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
+    setLanguage: (locale: string) => ipcRenderer.invoke('set-language', locale),
+    getTranslations: (locale?: string) => ipcRenderer.invoke('get-translations', locale),
+    onLanguageChanged: (callback: (locale: string) => void) => {
+        ipcRenderer.on('language-changed', (_event: IpcRendererEvent, locale: string) => callback(locale));
     }
 });
