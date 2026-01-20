@@ -265,6 +265,7 @@
             cursor: pointer;
             transition: all 0.2s;
             font-size: 13px;
+            min-height: 38px;
         }
 
         .extension-checkbox:hover {
@@ -1031,6 +1032,7 @@
         let activeProfileId = null;
         let profileStats = new Map();
         let mcpRunning = false;
+        let saveSettingsTimers = new Map(); // Debounce timers for profile settings
 
         // Load profiles on startup
         async function loadProfiles() {
@@ -1334,7 +1336,7 @@
                     cb.closest('.extension-checkbox').classList.add('checked');
                 }
             });
-            saveProfileSettings(profileId);
+            debouncedSaveProfileSettings(profileId);
         }
 
         function clearAllExtensions(profileId, categoryId) {
@@ -1345,7 +1347,7 @@
                     cb.closest('.extension-checkbox').classList.remove('checked');
                 }
             });
-            saveProfileSettings(profileId);
+            debouncedSaveProfileSettings(profileId);
         }
 
         function handleExtensionChange(profileId, checkbox) {
@@ -1357,8 +1359,23 @@
                 label.classList.remove('checked');
             }
 
-            // Save settings
-            saveProfileSettings(profileId);
+            // Save settings with debounce
+            debouncedSaveProfileSettings(profileId);
+        }
+
+        function debouncedSaveProfileSettings(profileId) {
+            // Clear existing timer for this profile
+            if (saveSettingsTimers.has(profileId)) {
+                clearTimeout(saveSettingsTimers.get(profileId));
+            }
+
+            // Set new timer - save after 500ms of no changes
+            const timer = setTimeout(() => {
+                saveProfileSettings(profileId);
+                saveSettingsTimers.delete(profileId);
+            }, 500);
+
+            saveSettingsTimers.set(profileId, timer);
         }
 
         async function renderActiveProfile() {
