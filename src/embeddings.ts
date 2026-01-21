@@ -122,6 +122,15 @@ export interface DownloadProgress {
     modelName?: string;
 }
 
+// Queue item for sequential processing
+interface QueuedRequest {
+    id: string;
+    text: string;
+    resolve: (value: { embedding: number[]; tokens: number }) => void;
+    reject: (error: Error) => void;
+    retried: boolean;
+}
+
 export class EmbeddingService {
     private client: OpenAI | null = null;
     private openaiModel = 'text-embedding-3-large';
@@ -132,8 +141,18 @@ export class EmbeddingService {
     private modelConfig: LocalModelConfig | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private requestId = 0;
-    private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = new Map();
+    private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; text: string; retried: boolean }> = new Map();
     private isWorkerReady = false;
+    private isShuttingDown = false; // Prevent restart during shutdown
+    private restartAttempts = 0;
+    private readonly MAX_RESTART_ATTEMPTS = 3;
+    private readonly RESTART_DELAY_MS = 1000;
+    private readonly WORKER_REQUEST_TIMEOUT_MS = 60000; // 60 seconds timeout per request
+
+    // Request queue for sequential processing
+    private requestQueue: QueuedRequest[] = [];
+    private currentRequestId: string | null = null;
+    private currentRequestTimer: NodeJS.Timeout | null = null;
 
     constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
         this.provider = provider;
@@ -217,6 +236,9 @@ export class EmbeddingService {
                             });
                         }
                     } else if (response.type === 'embedding') {
+                        console.log(`[Queue] Received embedding response for ${response.id}`);
+                        // Clear the timeout timer
+                        this.clearRequestTimer();
                         const pending = this.pendingRequests.get(response.id);
                         if (pending) {
                             this.pendingRequests.delete(response.id);
@@ -224,8 +246,16 @@ export class EmbeddingService {
                                 embedding: response.embedding!,
                                 tokens: response.tokens!
                             });
+                        } else {
+                            console.log(`[Queue] No pending request found for ${response.id} (may have timed out)`);
                         }
+                        // Process next item in queue
+                        this.currentRequestId = null;
+                        this.processNextInQueue();
                     } else if (response.type === 'error') {
+                        console.log(`[Queue] Received error response for ${response.id}: ${response.error}`);
+                        // Clear the timeout timer
+                        this.clearRequestTimer();
                         if (response.id === 'init') {
                             reject(new Error(response.error || 'Failed to initialize worker'));
                         } else {
@@ -234,6 +264,9 @@ export class EmbeddingService {
                                 this.pendingRequests.delete(response.id);
                                 pending.reject(new Error(response.error || 'Worker error'));
                             }
+                            // Process next item in queue even on error
+                            this.currentRequestId = null;
+                            this.processNextInQueue();
                         }
                     }
                 });
@@ -242,12 +275,20 @@ export class EmbeddingService {
                 this.worker.on('error', (error) => {
                     console.error('Embedding worker error:', error);
                     this.isWorkerReady = false;
-                    
+                    this.currentRequestId = null;
+                    this.clearRequestTimer();
+
                     // Reject all pending requests
                     for (const [id, pending] of this.pendingRequests) {
                         pending.reject(error);
                     }
                     this.pendingRequests.clear();
+
+                    // Reject all queued requests
+                    for (const req of this.requestQueue) {
+                        req.reject(error);
+                    }
+                    this.requestQueue = [];
                 });
 
                 // Handle worker exit
@@ -255,12 +296,18 @@ export class EmbeddingService {
                     console.log(`Embedding worker exited with code: ${code}`);
                     this.isWorkerReady = false;
                     this.worker = null;
-                    
-                    // Reject all pending requests
-                    for (const [id, pending] of this.pendingRequests) {
-                        pending.reject(new Error(`Worker exited with code ${code}`));
+
+                    // If not shutting down and exit was unexpected, try to restart
+                    if (!this.isShuttingDown && code !== 0) {
+                        console.log('Worker crashed unexpectedly, will attempt restart...');
+                        this.handleWorkerCrash();
+                    } else {
+                        // Normal shutdown - reject all pending requests
+                        for (const [id, pending] of this.pendingRequests) {
+                            pending.reject(new Error(`Worker exited with code ${code}`));
+                        }
+                        this.pendingRequests.clear();
                     }
-                    this.pendingRequests.clear();
                 });
 
             } catch (error) {
@@ -269,11 +316,126 @@ export class EmbeddingService {
             }
         });
     }
-    
+
+    /**
+     * Handle worker crash by attempting to restart and retry pending requests
+     */
+    private async handleWorkerCrash(): Promise<void> {
+        if (this.isShuttingDown) {
+            return;
+        }
+
+        this.restartAttempts++;
+
+        if (this.restartAttempts > this.MAX_RESTART_ATTEMPTS) {
+            console.error(`Worker crashed ${this.MAX_RESTART_ATTEMPTS} times, giving up. Manual restart required.`);
+            // Reject all pending requests
+            for (const [id, pending] of this.pendingRequests) {
+                pending.reject(new Error('Worker crashed repeatedly, service unavailable'));
+            }
+            this.pendingRequests.clear();
+            // Reject all queued requests
+            for (const req of this.requestQueue) {
+                req.reject(new Error('Worker crashed repeatedly, service unavailable'));
+            }
+            this.requestQueue = [];
+            this.currentRequestId = null;
+            return;
+        }
+
+        console.log(`Attempting worker restart (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})...`);
+
+        // Save pending requests that haven't been retried yet
+        const requestsToRetry: QueuedRequest[] = [];
+
+        // Save the current in-flight request
+        for (const [id, pending] of this.pendingRequests) {
+            if (!pending.retried) {
+                requestsToRetry.push({
+                    id,
+                    text: pending.text,
+                    resolve: pending.resolve,
+                    reject: pending.reject,
+                    retried: true // Mark as retried
+                });
+            } else {
+                // Already retried once, reject it
+                pending.reject(new Error('Worker crashed during retry'));
+            }
+        }
+        this.pendingRequests.clear();
+        this.currentRequestId = null;
+
+        // Save queued requests (they haven't been sent yet, so don't mark as retried)
+        const queuedToRetry = [...this.requestQueue];
+        this.requestQueue = [];
+
+        // Wait before restart (allows ONNX runtime to fully unload)
+        await new Promise(resolve => setTimeout(resolve, this.RESTART_DELAY_MS));
+
+        if (this.isShuttingDown) {
+            // Shutdown was requested during the delay
+            for (const req of requestsToRetry) {
+                req.reject(new Error('Service shutting down'));
+            }
+            for (const req of queuedToRetry) {
+                req.reject(new Error('Service shutting down'));
+            }
+            return;
+        }
+
+        try {
+            // Restart the worker
+            this.initPromise = this.initializeWorker();
+            await this.initPromise;
+
+            // Reset restart attempts on successful restart
+            this.restartAttempts = 0;
+
+            // Re-queue all requests (in-flight first, then queued)
+            const totalToRetry = requestsToRetry.length + queuedToRetry.length;
+            console.log(`Worker restarted, re-queueing ${totalToRetry} request(s)...`);
+
+            // Add in-flight requests back to queue first (they were being processed)
+            for (const req of requestsToRetry) {
+                this.requestQueue.push(req);
+            }
+
+            // Add previously queued requests
+            for (const req of queuedToRetry) {
+                this.requestQueue.push(req);
+            }
+
+            // Start processing the queue
+            this.processNextInQueue();
+        } catch (error) {
+            console.error('Failed to restart worker:', error);
+            // Reject all saved requests
+            for (const req of requestsToRetry) {
+                req.reject(new Error(`Worker restart failed: ${error}`));
+            }
+            for (const req of queuedToRetry) {
+                req.reject(new Error(`Worker restart failed: ${error}`));
+            }
+        }
+    }
+
     /**
      * Terminate the worker thread. Call this when shutting down.
      */
     async terminate(): Promise<void> {
+        this.isShuttingDown = true; // Prevent auto-restart
+
+        // Clear any pending request timer
+        this.clearRequestTimer();
+
+        // Reject all queued requests
+        for (const req of this.requestQueue) {
+            req.reject(new Error('Service shutting down'));
+        }
+        this.requestQueue = [];
+        this.currentRequestId = null;
+
         if (this.worker) {
             const request: EmbeddingRequest = { id: 'shutdown', type: 'shutdown' };
             this.worker.postMessage(request);
@@ -321,6 +483,65 @@ export class EmbeddingService {
 
     getModelConfig(): LocalModelConfig | null {
         return this.modelConfig;
+    }
+
+    /**
+     * Get the current queue size (for monitoring/debugging)
+     */
+    getQueueSize(): number {
+        return this.requestQueue.length;
+    }
+
+    /**
+     * Check if currently processing a request
+     */
+    isProcessing(): boolean {
+        return this.currentRequestId !== null;
+    }
+
+    /**
+     * Clear the current request timeout timer
+     */
+    private clearRequestTimer(): void {
+        if (this.currentRequestTimer) {
+            clearTimeout(this.currentRequestTimer);
+            this.currentRequestTimer = null;
+        }
+    }
+
+    /**
+     * Start a timeout timer for the current request
+     */
+    private startRequestTimer(requestId: string): void {
+        this.clearRequestTimer();
+        this.currentRequestTimer = setTimeout(() => {
+            this.handleRequestTimeout(requestId);
+        }, this.WORKER_REQUEST_TIMEOUT_MS);
+    }
+
+    /**
+     * Handle worker request timeout - restart worker and continue queue
+     */
+    private handleRequestTimeout(requestId: string): void {
+        console.error(`[Queue] Request ${requestId} timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms - worker may be stuck`);
+
+        // Clear the timer
+        this.currentRequestTimer = null;
+
+        // Reject the timed-out request
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+            this.pendingRequests.delete(requestId);
+            pending.reject(new Error(`Worker request timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms`));
+        }
+
+        // Mark worker as not ready and trigger restart
+        this.isWorkerReady = false;
+        this.currentRequestId = null;
+
+        // Trigger worker crash handling which will restart and retry queued requests
+        console.log('[Queue] Triggering worker restart due to timeout...');
+        this.handleWorkerCrash();
     }
 
     async validateApiKey(): Promise<boolean> {
@@ -375,19 +596,78 @@ export class EmbeddingService {
 
         return new Promise((resolve, reject) => {
             const id = `req_${++this.requestId}`;
-            
-            // Store the pending request
-            this.pendingRequests.set(id, { resolve, reject });
-            
-            // Send request to worker
-            const request: EmbeddingRequest = {
+
+            // Add to queue instead of sending directly
+            const queuedRequest: QueuedRequest = {
                 id,
-                type: 'embed',
-                text
+                text,
+                resolve,
+                reject,
+                retried: false
             };
-            
-            this.worker!.postMessage(request);
+
+            this.requestQueue.push(queuedRequest);
+            console.log(`[Queue] Added request ${id}, queue size: ${this.requestQueue.length}`);
+
+            // Start processing if not already
+            this.processNextInQueue();
         });
+    }
+
+    /**
+     * Process the next request in the queue (one at a time)
+     */
+    private processNextInQueue(): void {
+        console.log(`[Queue] processNextInQueue called - currentRequestId: ${this.currentRequestId}, queueSize: ${this.requestQueue.length}, workerReady: ${this.isWorkerReady}`);
+
+        // Don't process if already waiting for a response
+        if (this.currentRequestId !== null) {
+            console.log(`[Queue] Already processing ${this.currentRequestId}, waiting...`);
+            return;
+        }
+
+        // Don't process if queue is empty
+        if (this.requestQueue.length === 0) {
+            console.log('[Queue] Queue empty, nothing to process');
+            return;
+        }
+
+        // Don't process if worker is not ready
+        if (!this.worker || !this.isWorkerReady) {
+            console.log('[Queue] Worker not ready, waiting...');
+            return;
+        }
+
+        // Get next request from queue
+        const queuedRequest = this.requestQueue.shift();
+        if (!queuedRequest) {
+            return;
+        }
+
+        this.currentRequestId = queuedRequest.id;
+
+        console.log(`[Queue] Processing request ${queuedRequest.id}, remaining in queue: ${this.requestQueue.length}`);
+
+        // Store in pending requests for response handling
+        this.pendingRequests.set(queuedRequest.id, {
+            resolve: queuedRequest.resolve,
+            reject: queuedRequest.reject,
+            text: queuedRequest.text,
+            retried: queuedRequest.retried
+        });
+
+        // Send request to worker
+        const request: EmbeddingRequest = {
+            id: queuedRequest.id,
+            type: 'embed',
+            text: queuedRequest.text
+        };
+
+        console.log(`[Queue] Sending request ${queuedRequest.id} to worker (text length: ${queuedRequest.text.length})`);
+        this.worker!.postMessage(request);
+
+        // Start timeout timer for this request
+        this.startRequestTimer(queuedRequest.id);
     }
 
     private async generateOpenAIEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {

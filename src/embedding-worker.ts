@@ -161,7 +161,11 @@ async function initializeModel() {
 }
 
 async function generateEmbedding(id: string, text: string) {
+    console.log(`[Worker] Received embedding request ${id} (text length: ${text.length})`);
+    const startTime = Date.now();
+
     if (!localPipeline) {
+        console.log(`[Worker] Error: Model not loaded for request ${id}`);
         const response: EmbeddingResponse = {
             id,
             type: 'error',
@@ -170,16 +174,20 @@ async function generateEmbedding(id: string, text: string) {
         parentPort?.postMessage(response);
         return;
     }
-    
+
     try {
+        console.log(`[Worker] Starting embedding generation for ${id}...`);
         const output = await localPipeline(text, {
             pooling: 'mean',
             normalize: true
         });
-        
+
+        const elapsed = Date.now() - startTime;
         const embedding = Array.from(output.data as Float32Array);
         const tokens = Math.ceil(text.length / 4); // Rough estimate
-        
+
+        console.log(`[Worker] Completed ${id} in ${elapsed}ms (embedding size: ${embedding.length})`);
+
         const response: EmbeddingResponse = {
             id,
             type: 'embedding',
@@ -188,6 +196,8 @@ async function generateEmbedding(id: string, text: string) {
         };
         parentPort?.postMessage(response);
     } catch (error: any) {
+        const elapsed = Date.now() - startTime;
+        console.log(`[Worker] Error for ${id} after ${elapsed}ms: ${error.message}`);
         const response: EmbeddingResponse = {
             id,
             type: 'error',
