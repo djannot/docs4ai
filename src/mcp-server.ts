@@ -55,6 +55,8 @@ export class McpServer {
     private sessions: Map<string, SessionData> = new Map();
     private sessionCleanupInterval: NodeJS.Timeout | null = null;
     private onCostUpdate: ((tokens: number, cost: number) => void) | null = null;
+    private isStopping = false; // Prevent multiple concurrent stop calls
+    private stopPromise: Promise<void> | null = null;
 
     constructor(port: number = 3333) {
         this.port = port;
@@ -702,32 +704,56 @@ export class McpServer {
     }
 
     async stop(): Promise<void> {
-        // Stop session cleanup interval
-        this.stopSessionCleanup();
-
-        // Terminate embedding service worker if it exists
-        if (this.embeddingService) {
-            await this.embeddingService.terminate();
-            this.embeddingService = null;
+        // If already stopping, return the existing promise (idempotent)
+        if (this.isStopping && this.stopPromise) {
+            return this.stopPromise;
         }
 
-        // Close database connection
-        this.closeDatabase();
+        // If already stopped, return immediately
+        if (!this.server && !this.embeddingService && !this.sessionCleanupInterval) {
+            return Promise.resolve();
+        }
 
-        // Clear sessions
-        this.sessions.clear();
+        this.isStopping = true;
 
-        return new Promise((resolve) => {
-            if (this.server) {
-                this.server.close(() => {
-                    console.log('MCP Server stopped');
-                    this.server = null;
-                    resolve();
-                });
-            } else {
-                resolve();
+        this.stopPromise = (async () => {
+            // Stop session cleanup interval
+            this.stopSessionCleanup();
+
+            // Terminate embedding service worker if it exists
+            if (this.embeddingService) {
+                try {
+                    await this.embeddingService.terminate();
+                } catch (error) {
+                    console.error('Error terminating embedding service:', error);
+                }
+                this.embeddingService = null;
             }
-        });
+
+            // Close database connection
+            this.closeDatabase();
+
+            // Clear sessions
+            this.sessions.clear();
+
+            // Close HTTP server
+            await new Promise<void>((resolve) => {
+                if (this.server) {
+                    this.server.close(() => {
+                        console.log('MCP Server stopped');
+                        this.server = null;
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            });
+
+            this.isStopping = false;
+            this.stopPromise = null;
+        })();
+
+        return this.stopPromise;
     }
 
     isRunning(): boolean {

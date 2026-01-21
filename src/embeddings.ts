@@ -132,8 +132,12 @@ export class EmbeddingService {
     private modelConfig: LocalModelConfig | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private requestId = 0;
-    private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void }> = new Map();
+    private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; text: string; retried: boolean }> = new Map();
     private isWorkerReady = false;
+    private isShuttingDown = false; // Prevent restart during shutdown
+    private restartAttempts = 0;
+    private readonly MAX_RESTART_ATTEMPTS = 3;
+    private readonly RESTART_DELAY_MS = 1000;
 
     constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
         this.provider = provider;
@@ -255,12 +259,18 @@ export class EmbeddingService {
                     console.log(`Embedding worker exited with code: ${code}`);
                     this.isWorkerReady = false;
                     this.worker = null;
-                    
-                    // Reject all pending requests
-                    for (const [id, pending] of this.pendingRequests) {
-                        pending.reject(new Error(`Worker exited with code ${code}`));
+
+                    // If not shutting down and exit was unexpected, try to restart
+                    if (!this.isShuttingDown && code !== 0) {
+                        console.log('Worker crashed unexpectedly, will attempt restart...');
+                        this.handleWorkerCrash();
+                    } else {
+                        // Normal shutdown - reject all pending requests
+                        for (const [id, pending] of this.pendingRequests) {
+                            pending.reject(new Error(`Worker exited with code ${code}`));
+                        }
+                        this.pendingRequests.clear();
                     }
-                    this.pendingRequests.clear();
                 });
 
             } catch (error) {
@@ -269,11 +279,93 @@ export class EmbeddingService {
             }
         });
     }
-    
+
+    /**
+     * Handle worker crash by attempting to restart and retry pending requests
+     */
+    private async handleWorkerCrash(): Promise<void> {
+        if (this.isShuttingDown) {
+            return;
+        }
+
+        this.restartAttempts++;
+
+        if (this.restartAttempts > this.MAX_RESTART_ATTEMPTS) {
+            console.error(`Worker crashed ${this.MAX_RESTART_ATTEMPTS} times, giving up. Manual restart required.`);
+            // Reject all pending requests
+            for (const [id, pending] of this.pendingRequests) {
+                pending.reject(new Error('Worker crashed repeatedly, service unavailable'));
+            }
+            this.pendingRequests.clear();
+            return;
+        }
+
+        console.log(`Attempting worker restart (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})...`);
+
+        // Save pending requests that haven't been retried yet
+        const requestsToRetry: Array<{ id: string; text: string; resolve: (value: any) => void; reject: (error: Error) => void }> = [];
+        for (const [id, pending] of this.pendingRequests) {
+            if (!pending.retried) {
+                requestsToRetry.push({ id, text: pending.text, resolve: pending.resolve, reject: pending.reject });
+            } else {
+                // Already retried once, reject it
+                pending.reject(new Error('Worker crashed during retry'));
+            }
+        }
+        this.pendingRequests.clear();
+
+        // Wait before restart (allows ONNX runtime to fully unload)
+        await new Promise(resolve => setTimeout(resolve, this.RESTART_DELAY_MS));
+
+        if (this.isShuttingDown) {
+            // Shutdown was requested during the delay
+            for (const req of requestsToRetry) {
+                req.reject(new Error('Service shutting down'));
+            }
+            return;
+        }
+
+        try {
+            // Restart the worker
+            this.initPromise = this.initializeWorker();
+            await this.initPromise;
+
+            // Reset restart attempts on successful restart
+            this.restartAttempts = 0;
+
+            // Retry pending requests
+            console.log(`Worker restarted, retrying ${requestsToRetry.length} pending request(s)...`);
+            for (const req of requestsToRetry) {
+                const newId = `req_${++this.requestId}`;
+                this.pendingRequests.set(newId, {
+                    resolve: req.resolve,
+                    reject: req.reject,
+                    text: req.text,
+                    retried: true
+                });
+
+                const request: EmbeddingRequest = {
+                    id: newId,
+                    type: 'embed',
+                    text: req.text
+                };
+                this.worker!.postMessage(request);
+            }
+        } catch (error) {
+            console.error('Failed to restart worker:', error);
+            // Reject all saved requests
+            for (const req of requestsToRetry) {
+                req.reject(new Error(`Worker restart failed: ${error}`));
+            }
+        }
+    }
+
     /**
      * Terminate the worker thread. Call this when shutting down.
      */
     async terminate(): Promise<void> {
+        this.isShuttingDown = true; // Prevent auto-restart
+
         if (this.worker) {
             const request: EmbeddingRequest = { id: 'shutdown', type: 'shutdown' };
             this.worker.postMessage(request);
@@ -375,17 +467,17 @@ export class EmbeddingService {
 
         return new Promise((resolve, reject) => {
             const id = `req_${++this.requestId}`;
-            
-            // Store the pending request
-            this.pendingRequests.set(id, { resolve, reject });
-            
+
+            // Store the pending request with text for potential retry
+            this.pendingRequests.set(id, { resolve, reject, text, retried: false });
+
             // Send request to worker
             const request: EmbeddingRequest = {
                 id,
                 type: 'embed',
                 text
             };
-            
+
             this.worker!.postMessage(request);
         });
     }
