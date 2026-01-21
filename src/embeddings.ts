@@ -563,6 +563,8 @@ export class EmbeddingService {
      * Process the next request in the queue (one at a time)
      */
     private processNextInQueue(): void {
+        console.log(`[Queue] processNextInQueue called - currentRequestId: ${this.currentRequestId}, queueSize: ${this.requestQueue.length}, workerReady: ${this.isWorkerReady}`);
+
         // Don't process if already waiting for a response
         if (this.currentRequestId !== null) {
             console.log(`[Queue] Already processing ${this.currentRequestId}, waiting...`);
@@ -571,6 +573,7 @@ export class EmbeddingService {
 
         // Don't process if queue is empty
         if (this.requestQueue.length === 0) {
+            console.log('[Queue] Queue empty, nothing to process');
             return;
         }
 
