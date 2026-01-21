@@ -539,9 +539,9 @@ export class LlamaServer {
     }
 }
 
-// Default model configuration for Qwen2.5
+// Default model configuration for Qwen3
 export const QWEN3_MODEL = {
-    repoId: 'Qwen/Qwen2.5-1.5B-Instruct-GGUF',
-    filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
-    name: 'Qwen2.5 1.5B'
+    repoId: 'Qwen/Qwen3-1.7B-GGUF',
+    filename: 'Qwen3-1.7B-Q8_0.gguf',
+    name: 'Qwen3 1.7B'
 };
