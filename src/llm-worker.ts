@@ -91,10 +91,10 @@ async function initializeModel() {
         sendProgress('downloading', 'model files');
 
         // Create text generation pipeline with progress tracking
-        // Use wasm device explicitly for better stability on macOS ARM64
+        // Use cpu device for Node.js/Electron environment
         console.log('LLM Worker: Creating text generation pipeline...');
         pipeline = await createPipeline('text-generation', MODEL_ID, {
-            device: 'wasm',
+            device: 'cpu',
             progress_callback: (progress: any) => {
                 if (progress.status === 'progress') {
                     const percent = progress.progress ? Math.round(progress.progress) : 0;
