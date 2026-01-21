@@ -932,7 +932,7 @@
                 <label for="llmProvider" data-i18n="chat.llmProvider">LLM Provider:</label>
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
                     <option value="openai" data-i18n="chat.openaiOption">OpenAI (gpt-4o-mini)</option>
-                    <option value="local-qwen3" data-i18n="chat.localQwen2.5Option">Local Qwen2.5 (0.5B, ~1GB)</option>
+                    <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local FunctionGemma (270M, ~1GB)</option>
                 </select>
                 <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
                     Uses OpenAI API for chat. Requires API key.
@@ -3353,31 +3353,49 @@
             if (Object.keys(translations).length === 0) {
                 return;
             }
-            
+
+            // Apply translations to all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                const translated = t(key);
+                if (translated !== key) {
+                    el.textContent = translated;
+                }
+            });
+
+            // Apply translations to placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                const translated = t(key);
+                if (translated !== key) {
+                    el.placeholder = translated;
+                }
+            });
+
             // Update header status
             updateOverallStatus();
-            
+
             // Update MCP Server section
             const mcpTitle = document.querySelector('.card .card-title');
             if (mcpTitle && mcpTitle.textContent.includes('MCP Server')) {
                 mcpTitle.textContent = `🌐 ${t('mcp.title')}`;
             }
-            
+
             const mcpPortLabel = document.querySelector('label[for="mcpPort"]');
             if (mcpPortLabel) {
                 mcpPortLabel.textContent = t('mcp.port') + ':';
             }
-            
+
             const mcpToggleBtn = document.getElementById('mcpToggleBtn');
             if (mcpToggleBtn) {
                 mcpToggleBtn.textContent = mcpRunning ? t('mcp.stopServer') : t('mcp.startServer');
             }
-            
+
             const mcpConfigureBtn = document.getElementById('mcpConfigureBtn');
             if (mcpConfigureBtn && mcpConfigureBtn.textContent.includes('Configure')) {
                 mcpConfigureBtn.textContent = t('mcp.configureClients', {});
             }
-            
+
             // Update active profile content
             if (activeProfileId) {
                 renderActiveProfile();

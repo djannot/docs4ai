@@ -36,10 +36,10 @@ interface WorkerRequest {
     maxTokens?: number;
 }
 
-// Model configuration - Qwen2.5-0.5B-Instruct for better stability
-// Note: Qwen3-1.7B causes SIGTRAP crashes on macOS ARM64 due to ONNX runtime issues
-// Qwen2.5-0.5B is smaller (~1GB) but still supports function calling
-const MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct';
+// Model configuration - FunctionGemma 270M for function calling
+// This model is specifically designed for function calling tasks
+// See: https://huggingface.co/onnx-community/functiongemma-270m-it-ONNX
+const MODEL_ID = 'onnx-community/functiongemma-270m-it-ONNX';
 
 // Global state
 let pipeline: any = null;
@@ -120,81 +120,120 @@ async function initializeModel() {
 }
 
 /**
- * Format messages for the model using ChatML format
- * Qwen2.5 uses the standard ChatML format with im_start/im_end tokens
+ * Format messages for the model using FunctionGemma format
+ * FunctionGemma uses developer-user roles and special function call tags
+ * See: https://huggingface.co/onnx-community/functiongemma-270m-it-ONNX
  */
 function formatMessages(messages: ChatMessage[], tools?: ToolDefinition[]): string {
     let prompt = '';
 
-    // Add system message with tools if available
-    let systemContent = '';
-    const nonSystemMessages: ChatMessage[] = [];
+    // Build developer message with tool definitions
+    let developerContent = 'You are a helpful assistant that can search through documents to answer questions.';
 
+    if (tools && tools.length > 0) {
+        developerContent += ' You have access to the following functions:\n\n';
+        for (const tool of tools) {
+            developerContent += JSON.stringify(tool, null, 2) + '\n\n';
+        }
+        developerContent += 'When you need to search for information, use the appropriate function. ';
+        developerContent += 'Format function calls as: <start_function_call>call:FUNCTION_NAME{param:<escape>value<escape>}<end_function_call>';
+    }
+
+    // Add developer message
+    prompt += `<start_of_turn>developer\n${developerContent}<end_of_turn>\n`;
+
+    // Process messages
     for (const msg of messages) {
         if (msg.role === 'system') {
-            systemContent += msg.content + '\n';
-        } else {
-            nonSystemMessages.push(msg);
-        }
-    }
-
-    // Add tool descriptions to system message if tools are provided
-    if (tools && tools.length > 0) {
-        systemContent += '\n\nYou have access to the following tools:\n\n';
-        for (const tool of tools) {
-            systemContent += `### ${tool.function.name}\n`;
-            systemContent += `${tool.function.description}\n`;
-            systemContent += `Parameters: ${JSON.stringify(tool.function.parameters, null, 2)}\n\n`;
-        }
-        systemContent += `\nTo use a tool, respond with a JSON object in this exact format:
-{"tool_call": {"name": "tool_name", "arguments": {"arg1": "value1"}}}
-
-Only use this format when you need to search or retrieve information. For normal conversation, respond naturally without the JSON format.`;
-    }
-
-    // Build the prompt using ChatML format
-    if (systemContent.trim()) {
-        prompt += `<|im_start|>system\n${systemContent.trim()}<|im_end|>\n`;
-    }
-
-    for (const msg of nonSystemMessages) {
-        if (msg.role === 'user') {
-            prompt += `<|im_start|>user\n${msg.content}<|im_end|>\n`;
+            // System messages are merged into developer
+            continue;
+        } else if (msg.role === 'user') {
+            prompt += `<start_of_turn>user\n${msg.content}<end_of_turn>\n`;
         } else if (msg.role === 'assistant') {
             if (msg.tool_calls && msg.tool_calls.length > 0) {
-                // Format tool calls
-                const toolCallJson = JSON.stringify({
-                    tool_call: {
-                        name: msg.tool_calls[0].function.name,
-                        arguments: JSON.parse(msg.tool_calls[0].function.arguments)
-                    }
-                });
-                prompt += `<|im_start|>assistant\n${toolCallJson}<|im_end|>\n`;
+                // Format as function call
+                const tc = msg.tool_calls[0];
+                let args;
+                try {
+                    args = JSON.parse(tc.function.arguments);
+                } catch {
+                    args = tc.function.arguments;
+                }
+
+                let argsStr = '';
+                if (typeof args === 'object') {
+                    argsStr = Object.entries(args)
+                        .map(([k, v]) => `${k}:<escape>${v}<escape>`)
+                        .join(',');
+                }
+
+                prompt += `<start_of_turn>model\n<start_function_call>call:${tc.function.name}{${argsStr}}<end_function_call><end_of_turn>\n`;
             } else {
-                prompt += `<|im_start|>assistant\n${msg.content}<|im_end|>\n`;
+                prompt += `<start_of_turn>model\n${msg.content}<end_of_turn>\n`;
             }
         } else if (msg.role === 'tool') {
-            // Tool results are added as user messages with context
-            prompt += `<|im_start|>user\nTool result for ${msg.name || 'tool'}:\n${msg.content}<|im_end|>\n`;
+            // Tool results
+            prompt += `<start_function_response>${msg.content}<end_function_response>\n`;
         }
     }
 
-    // Add assistant start token
-    prompt += `<|im_start|>assistant\n`;
+    // Add model start token
+    prompt += `<start_of_turn>model\n`;
 
     return prompt;
 }
 
 /**
- * Parse tool calls from model output
+ * Parse tool calls from model output (FunctionGemma format)
+ * Format: <start_function_call>call:FUNCTION_NAME{param:<escape>value<escape>}<end_function_call>
  */
 function parseToolCalls(content: string): { content: string; toolCalls?: ToolCall[] } {
-    // Try to find JSON tool call format
-    const toolCallMatch = content.match(/\{"tool_call":\s*\{[^}]+\}\}/);
+    // Try to find FunctionGemma function call format
+    const functionCallMatch = content.match(/<start_function_call>call:(\w+)\{([^}]*)\}<end_function_call>/);
 
-    if (toolCallMatch) {
+    if (functionCallMatch) {
+        const funcName = functionCallMatch[1];
+        const argsStr = functionCallMatch[2];
+
+        // Parse arguments from format: param1:<escape>value1<escape>,param2:<escape>value2<escape>
+        const args: Record<string, any> = {};
+        if (argsStr) {
+            const argPairs = argsStr.split(',');
+            for (const pair of argPairs) {
+                const colonIndex = pair.indexOf(':');
+                if (colonIndex > 0) {
+                    const key = pair.substring(0, colonIndex).trim();
+                    let value = pair.substring(colonIndex + 1).trim();
+                    // Remove escape tags
+                    value = value.replace(/<escape>/g, '').replace(/<\/escape>/g, '');
+                    args[key] = value;
+                }
+            }
+        }
+
+        const toolCall: ToolCall = {
+            id: `call_${Date.now()}`,
+            type: 'function',
+            function: {
+                name: funcName,
+                arguments: JSON.stringify(args)
+            }
+        };
+
+        // Remove the function call from content
+        const cleanContent = content.replace(functionCallMatch[0], '').trim();
+
+        return {
+            content: cleanContent,
+            toolCalls: [toolCall]
+        };
+    }
+
+    // Also try JSON format as fallback
+    const jsonMatch = content.match(/\{"tool_call":\s*\{[^}]+\}\}/);
+    if (jsonMatch) {
         try {
-            const parsed = JSON.parse(toolCallMatch[0]);
+            const parsed = JSON.parse(jsonMatch[0]);
             if (parsed.tool_call && parsed.tool_call.name) {
                 const toolCall: ToolCall = {
                     id: `call_${Date.now()}`,
@@ -204,17 +243,11 @@ function parseToolCalls(content: string): { content: string; toolCalls?: ToolCal
                         arguments: JSON.stringify(parsed.tool_call.arguments || {})
                     }
                 };
-
-                // Remove the tool call JSON from content
-                const cleanContent = content.replace(toolCallMatch[0], '').trim();
-
-                return {
-                    content: cleanContent,
-                    toolCalls: [toolCall]
-                };
+                const cleanContent = content.replace(jsonMatch[0], '').trim();
+                return { content: cleanContent, toolCalls: [toolCall] };
             }
         } catch (e) {
-            // Not valid JSON, return as regular content
+            // Not valid JSON
         }
     }
 
@@ -254,10 +287,11 @@ async function handleChat(request: WorkerRequest) {
 
         let generatedText = outputs[0]?.generated_text || '';
 
-        // Clean up the response - remove end tokens
+        // Clean up the response - remove end tokens (FunctionGemma format)
         generatedText = generatedText
-            .replace(/<\|im_end\|>/g, '')
-            .replace(/<\|im_start\|>.*$/s, '')
+            .replace(/<end_of_turn>/g, '')
+            .replace(/<start_of_turn>.*$/s, '')
+            .replace(/<start_function_response>.*$/s, '')
             .trim();
 
         console.log('LLM Worker: Generated response length:', generatedText.length);
