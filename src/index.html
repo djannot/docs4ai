@@ -926,28 +926,28 @@
 
         <!-- Chat with LLM Card -->
         <div class="card" style="margin-top: 16px;">
-            <div class="card-title">💬 Chat with Documents</div>
+            <div class="card-title">💬 <span data-i18n="chat.title">Chat with Documents</span></div>
 
             <div class="input-group">
-                <label for="llmProvider">LLM Provider:</label>
+                <label for="llmProvider" data-i18n="chat.llmProvider">LLM Provider:</label>
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
-                    <option value="openai">OpenAI (gpt-4o-mini)</option>
-                    <option value="local-qwen3">Local SmolLM2 360M (Free, ~700MB)</option>
+                    <option value="openai" data-i18n="chat.openaiOption">OpenAI (gpt-4o-mini)</option>
+                    <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local Qwen3 (1.7B, ~3GB)</option>
                 </select>
-                <div class="info" id="llmProviderInfo" style="margin-top: 4px;">
+                <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
                     Uses OpenAI API for chat. Requires API key.
                 </div>
             </div>
 
             <div class="input-group" id="chatApiKeyGroup">
-                <label for="chatApiKey">OpenAI API Key:</label>
+                <label for="chatApiKey" data-i18n="chat.apiKeyLabel">OpenAI API Key:</label>
                 <input type="password" id="chatApiKey" placeholder="sk-...">
-                <div class="info">Same key used for embeddings can be used here.</div>
+                <div class="info" data-i18n="chat.apiKeySameInfo">Same key used for embeddings can be used here.</div>
             </div>
 
             <div class="input-group" id="llmDownloadProgress" style="display: none;">
                 <div class="download-progress-info" style="font-size: 14px; color: #1565c0; margin-bottom: 8px;">
-                    <span id="llmDownloadFile">Downloading model...</span>
+                    <span id="llmDownloadFile" data-i18n="chat.downloadingModel">Downloading model...</span>
                 </div>
                 <div class="download-progress-bar-container" style="height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">
                     <div class="download-progress-bar" id="llmDownloadBar" style="height: 100%; background: linear-gradient(90deg, #42a5f5, #7e57c2); border-radius: 4px; transition: width 0.3s ease; width: 0%"></div>
@@ -955,7 +955,7 @@
                 <div class="download-progress-text" id="llmDownloadText" style="font-size: 12px; color: #5e35b1; text-align: center;">0%</div>
             </div>
 
-            <button class="btn-primary" id="openChatBtn" onclick="openChatModal()" style="width: 100%; margin-top: 8px;">
+            <button class="btn-primary" id="openChatBtn" onclick="openChatModal()" style="width: 100%; margin-top: 8px;" data-i18n="chat.openChat">
                 Open Chat
             </button>
         </div>
@@ -1073,9 +1073,9 @@
     <div class="modal-overlay" id="chatModal">
         <div class="modal" style="max-width: 800px; height: 85vh;">
             <div class="modal-header" style="border-bottom: 1px solid #e5e5ea;">
-                <h2>💬 Chat with Documents</h2>
+                <h2>💬 <span data-i18n="chat.title">Chat with Documents</span></h2>
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <span id="chatStatusIndicator" style="font-size: 12px; color: #86868b;">Not connected</span>
+                    <span id="chatStatusIndicator" style="font-size: 12px; color: #86868b;" data-i18n="chat.notConnected">Not connected</span>
                     <button class="modal-close" onclick="closeChatModal()">&times;</button>
                 </div>
             </div>
@@ -1084,18 +1084,18 @@
                 <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px; background: #f5f5f7;">
                     <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
                         <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
-                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">Chat with your documents</h3>
-                        <p>Ask questions about your synced documents. The AI will search and reference them automatically.</p>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;" data-i18n="chat.welcomeTitle">Chat with your documents</h3>
+                        <p data-i18n="chat.welcomeDescription">Ask questions about your synced documents. The AI will search and reference them automatically.</p>
                     </div>
                 </div>
 
                 <!-- Chat Input -->
                 <div style="border-top: 1px solid #e5e5ea; padding: 12px 16px; background: white;">
                     <div style="display: flex; gap: 8px; align-items: flex-end;">
-                        <textarea id="chatInput" placeholder="Ask a question about your documents..."
+                        <textarea id="chatInput" data-i18n-placeholder="chat.inputPlaceholder" placeholder="Ask a question about your documents..."
                             style="flex: 1; min-height: 44px; max-height: 120px; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; resize: none; font-family: inherit;"
                             onkeydown="handleChatKeydown(event)"></textarea>
-                        <button class="btn-primary" id="chatSendBtn" onclick="sendChatMessage()" style="height: 44px; padding: 0 20px;">
+                        <button class="btn-primary" id="chatSendBtn" onclick="sendChatMessage()" style="height: 44px; padding: 0 20px;" data-i18n="chat.send">
                             Send
                         </button>
                     </div>
@@ -1178,27 +1178,81 @@
             30% { transform: translateY(-4px); opacity: 1; }
         }
 
+        .chat-tool-calls {
+            margin: 8px 0;
+        }
+
         .chat-tool-call {
             background: #f0f7ff;
             border: 1px solid #b3d9ff;
             border-radius: 8px;
-            padding: 8px 12px;
+            padding: 10px 12px;
             margin: 8px 0;
             font-size: 12px;
             color: #0066cc;
         }
 
         .chat-tool-call-header {
-            font-weight: 600;
-            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .chat-tool-call-args {
-            font-family: monospace;
-            background: rgba(0,0,0,0.05);
-            padding: 4px 8px;
+        .chat-tool-call-header .tool-icon {
+            font-size: 14px;
+        }
+
+        .chat-tool-call-header .tool-name {
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .chat-tool-call-header .tool-toggle {
+            background: rgba(0, 102, 204, 0.1);
+            border: 1px solid rgba(0, 102, 204, 0.3);
+            color: #0066cc;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .chat-tool-call-header .tool-toggle:hover {
+            background: rgba(0, 102, 204, 0.2);
+        }
+
+        .chat-tool-call-details {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0, 102, 204, 0.2);
+        }
+
+        .chat-tool-call-args,
+        .chat-tool-call-response {
+            margin-bottom: 8px;
+        }
+
+        .chat-tool-call-args strong,
+        .chat-tool-call-response strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #004c99;
+        }
+
+        .chat-tool-call-args pre,
+        .chat-tool-call-response pre {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            background: rgba(0, 0, 0, 0.05);
+            padding: 8px;
             border-radius: 4px;
             overflow-x: auto;
+            margin: 0;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
     </style>
 
@@ -2458,10 +2512,10 @@
 
                     if (provider === 'openai') {
                         apiKeyGroup.style.display = 'block';
-                        infoEl.textContent = 'Uses OpenAI API for chat. Requires API key.';
+                        infoEl.textContent = t('chat.openaiInfo');
                     } else {
                         apiKeyGroup.style.display = 'none';
-                        infoEl.textContent = 'Runs locally on your machine. First use will download ~700MB model.';
+                        infoEl.textContent = t('chat.localInfo');
                     }
                 });
             }
@@ -2478,13 +2532,13 @@
 
         async function openChatModal() {
             if (!activeProfileId) {
-                alert('Please select a profile first.');
+                alert(t('ui.noActiveProfile'));
                 return;
             }
 
             const profile = profiles.find(p => p.id === activeProfileId);
             if (!profile?.databasePath) {
-                alert('Please configure a database path for this profile first.');
+                alert(t('ui.noDatabaseSelected'));
                 return;
             }
 
@@ -2495,7 +2549,7 @@
             const chatApiKey = document.getElementById('chatApiKey').value;
 
             if (llmProvider === 'openai' && !chatApiKey) {
-                alert('Please enter an OpenAI API key for chat.');
+                alert(t('chat.apiKeyRequired'));
                 return;
             }
 
@@ -2503,7 +2557,7 @@
             if (llmProvider === 'local-qwen3') {
                 const openBtn = document.getElementById('openChatBtn');
                 openBtn.disabled = true;
-                openBtn.textContent = 'Initializing model...';
+                openBtn.textContent = t('ui.loadingModel');
 
                 // Show download progress area
                 document.getElementById('llmDownloadProgress').style.display = 'block';
@@ -2515,7 +2569,7 @@
             // Reset button state
             const openBtn = document.getElementById('openChatBtn');
             openBtn.disabled = false;
-            openBtn.textContent = 'Open Chat';
+            openBtn.textContent = t('chat.openChat');
 
             // Hide download progress
             document.getElementById('llmDownloadProgress').style.display = 'none';
@@ -2528,8 +2582,8 @@
                 messagesEl.innerHTML = `
                     <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
                         <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
-                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">Chat with your documents</h3>
-                        <p>Ask questions about your synced documents. The AI will search and reference them automatically.</p>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">${t('chat.welcomeTitle')}</h3>
+                        <p>${t('chat.welcomeDescription')}</p>
                     </div>
                 `;
             }
@@ -2543,12 +2597,12 @@
                 window.api.stopChat(activeProfileId);
             }
             chatActive = false;
-            updateChatStatus('Not connected');
+            updateChatStatus(t('chat.notConnected'));
         }
 
         async function startChatSession(llmProvider, apiKey) {
             const statusEl = document.getElementById('chatStatusIndicator');
-            statusEl.textContent = 'Connecting...';
+            statusEl.textContent = t('chat.searchingDocuments').replace('...', '');
             statusEl.style.color = '#ff9500';
 
             try {
@@ -2561,7 +2615,7 @@
 
                 if (result.success) {
                     chatActive = true;
-                    updateChatStatus(`Connected (${llmProvider === 'openai' ? 'OpenAI' : 'SmolLM2 Local'})`);
+                    updateChatStatus(llmProvider === 'openai' ? t('chat.connectedOpenai') : t('chat.connectedLocal'));
                     // Clear previous messages if any
                     chatMessages = [];
                     // Add system message
@@ -2571,12 +2625,12 @@
                     });
                     return true;
                 } else {
-                    updateChatStatus('Connection failed');
+                    updateChatStatus(t('chat.connectionFailed'));
                     showChatError(result.error);
                     return false;
                 }
             } catch (error) {
-                updateChatStatus('Connection failed');
+                updateChatStatus(t('chat.connectionFailed'));
                 showChatError(error.message);
                 return false;
             }
@@ -2585,9 +2639,12 @@
         function updateChatStatus(status) {
             const statusEl = document.getElementById('chatStatusIndicator');
             statusEl.textContent = status;
-            if (status.includes('Connected')) {
+            // Check if status contains "Connected" in any language by checking color patterns
+            const connectedStatuses = [t('chat.connectedOpenai'), t('chat.connectedLocal')];
+            const notConnectedStatus = t('chat.notConnected');
+            if (connectedStatuses.includes(status)) {
                 statusEl.style.color = '#34c759';
-            } else if (status === 'Not connected') {
+            } else if (status === notConnectedStatus) {
                 statusEl.style.color = '#86868b';
             } else {
                 statusEl.style.color = '#ff9500';
@@ -2653,8 +2710,8 @@
                 hideTypingIndicator();
 
                 if (result.success) {
-                    // Add assistant response to UI
-                    addMessageToUI('assistant', result.message.content);
+                    // Add assistant response to UI with tool calls if present
+                    addMessageToUI('assistant', result.message.content, result.toolCalls);
 
                     // Add to conversation history
                     chatMessages.push(result.message);
@@ -2669,7 +2726,7 @@
             }
         }
 
-        function addMessageToUI(role, content) {
+        function addMessageToUI(role, content, toolCalls = null) {
             const messagesEl = document.getElementById('chatMessages');
 
             const messageDiv = document.createElement('div');
@@ -2677,18 +2734,73 @@
 
             const roleLabel = document.createElement('div');
             roleLabel.className = 'chat-message-role';
-            roleLabel.textContent = role === 'user' ? 'You' : 'Assistant';
+            roleLabel.textContent = role === 'user' ? t('chat.you') : t('chat.assistant');
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'chat-message-content';
             contentDiv.textContent = content;
 
             messageDiv.appendChild(roleLabel);
+
+            // Add tool calls if present
+            if (toolCalls && toolCalls.length > 0) {
+                const toolCallsContainer = document.createElement('div');
+                toolCallsContainer.className = 'chat-tool-calls';
+
+                toolCalls.forEach((tc, index) => {
+                    const toolCallDiv = document.createElement('div');
+                    toolCallDiv.className = 'chat-tool-call';
+
+                    const toolCallHeader = document.createElement('div');
+                    toolCallHeader.className = 'chat-tool-call-header';
+                    toolCallHeader.innerHTML = `
+                        <span class="tool-icon">🔧</span>
+                        <span class="tool-name">${t('chat.toolCall')}: ${tc.name}</span>
+                        <button class="tool-toggle" onclick="toggleToolDetails(this)">
+                            ${t('chat.showDetails')}
+                        </button>
+                    `;
+
+                    const toolCallDetails = document.createElement('div');
+                    toolCallDetails.className = 'chat-tool-call-details';
+                    toolCallDetails.style.display = 'none';
+
+                    const argsSection = document.createElement('div');
+                    argsSection.className = 'chat-tool-call-args';
+                    argsSection.innerHTML = `<strong>${t('chat.arguments')}:</strong><pre>${JSON.stringify(tc.arguments, null, 2)}</pre>`;
+
+                    const responseSection = document.createElement('div');
+                    responseSection.className = 'chat-tool-call-response';
+                    responseSection.innerHTML = `<strong>${t('chat.response')}:</strong><pre>${typeof tc.response === 'string' ? tc.response : JSON.stringify(tc.response, null, 2)}</pre>`;
+
+                    toolCallDetails.appendChild(argsSection);
+                    toolCallDetails.appendChild(responseSection);
+
+                    toolCallDiv.appendChild(toolCallHeader);
+                    toolCallDiv.appendChild(toolCallDetails);
+                    toolCallsContainer.appendChild(toolCallDiv);
+                });
+
+                messageDiv.appendChild(toolCallsContainer);
+            }
+
             messageDiv.appendChild(contentDiv);
             messagesEl.appendChild(messageDiv);
 
             // Scroll to bottom
             messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function toggleToolDetails(button) {
+            const toolCallDiv = button.closest('.chat-tool-call');
+            const details = toolCallDiv.querySelector('.chat-tool-call-details');
+            if (details.style.display === 'none') {
+                details.style.display = 'block';
+                button.textContent = t('chat.hideDetails');
+            } else {
+                details.style.display = 'none';
+                button.textContent = t('chat.showDetails');
+            }
         }
 
         function showTypingIndicator() {
@@ -2733,14 +2845,14 @@
 
             if (status === 'downloading') {
                 progressEl.style.display = 'block';
-                fileEl.textContent = file || 'Downloading model...';
+                fileEl.textContent = file || t('chat.downloadingModel');
                 barEl.style.width = `${progress || 0}%`;
                 textEl.textContent = `${progress || 0}%`;
             } else if (status === 'ready') {
                 progressEl.style.display = 'none';
             } else if (status === 'error') {
                 progressEl.style.display = 'none';
-                showChatError(data.error || 'Failed to download model');
+                showChatError(data.error || t('common.error'));
             }
         });
 

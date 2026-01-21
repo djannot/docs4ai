@@ -1225,6 +1225,7 @@ function setupIpcHandlers() {
             const maxToolCalls = 5; // Prevent infinite loops
             let toolCallCount = 0;
             const conversationMessages = [...messages];
+            const executedToolCalls: Array<{ name: string; arguments: any; response: any }> = [];
 
             while (result.finishReason === 'tool_calls' && result.message.tool_calls && toolCallCount < maxToolCalls) {
                 toolCallCount++;
@@ -1238,6 +1239,19 @@ function setupIpcHandlers() {
                     console.log(`[Chat] Executing tool: ${toolCall.function.name}`);
 
                     const toolResult = await executeMcpToolCall(toolCall, mcpPort);
+
+                    // Store executed tool call for UI display
+                    let parsedArgs;
+                    try {
+                        parsedArgs = JSON.parse(toolCall.function.arguments);
+                    } catch {
+                        parsedArgs = toolCall.function.arguments;
+                    }
+                    executedToolCalls.push({
+                        name: toolCall.function.name,
+                        arguments: parsedArgs,
+                        response: toolResult
+                    });
 
                     // Add tool result to conversation
                     conversationMessages.push({
@@ -1261,7 +1275,8 @@ function setupIpcHandlers() {
                 success: true,
                 message: result.message,
                 finishReason: result.finishReason,
-                usage: result.usage
+                usage: result.usage,
+                toolCalls: executedToolCalls.length > 0 ? executedToolCalls : undefined
             };
 
         } catch (error: any) {

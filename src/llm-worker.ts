@@ -36,9 +36,9 @@ interface WorkerRequest {
     maxTokens?: number;
 }
 
-// Model configuration - Using smaller SmolLM2 model for better compatibility
-// Qwen3-1.7B is too large and causes crashes in Electron
-const MODEL_ID = 'HuggingFaceTB/SmolLM2-360M-Instruct';
+// Model configuration - Qwen3-1.7B-ONNX for function calling support
+// Note: This model is ~3GB and requires sufficient RAM
+const MODEL_ID = 'onnx-community/Qwen3-1.7B-ONNX';
 
 // Global state
 let pipeline: any = null;
@@ -118,7 +118,7 @@ async function initializeModel() {
 
 /**
  * Format messages for the model using ChatML format
- * SmolLM2-Instruct uses the standard ChatML format with im_start/im_end tokens
+ * Qwen3 uses the standard ChatML format with im_start/im_end tokens
  */
 function formatMessages(messages: ChatMessage[], tools?: ToolDefinition[]): string {
     let prompt = '';
