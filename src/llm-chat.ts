@@ -1,6 +1,6 @@
-import { Worker } from 'worker_threads';
 import * as path from 'path';
 import OpenAI from 'openai';
+import { LlamaServer, QWEN3_MODEL, ModelDownloadProgress } from './llama-server';
 
 // LLM Provider types
 export type LLMProvider = 'local-qwen3' | 'openai';
@@ -111,30 +111,15 @@ export const MCP_TOOLS: ToolDefinition[] = [
     }
 ];
 
-interface WorkerMessage {
-    type: 'ready' | 'response' | 'error' | 'download-progress';
-    requestId?: string;
-    message?: ChatMessage;
-    finishReason?: string;
-    usage?: any;
-    error?: string;
-    progress?: DownloadProgress;
-}
-
-interface PendingRequest {
-    resolve: (result: ChatCompletionResult) => void;
-    reject: (error: Error) => void;
-}
+// Default port for llama-server (different from MCP server port)
+const LLAMA_SERVER_PORT = 8787;
 
 export class LLMChatService {
     private provider: LLMProvider;
     private openaiClient: OpenAI | null = null;
     private openaiApiKey: string | null = null;
     private openaiModel: string = 'gpt-4o-mini';
-    private worker: Worker | null = null;
-    private workerReady: boolean = false;
-    private pendingRequests: Map<string, PendingRequest> = new Map();
-    private requestCounter: number = 0;
+    private llamaServer: LlamaServer | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private isTerminating: boolean = false;
 
@@ -148,6 +133,9 @@ export class LLMChatService {
             this.openaiApiKey = apiKey;
             this.openaiModel = model || 'gpt-4o-mini';
             this.openaiClient = new OpenAI({ apiKey });
+        } else {
+            // Create LlamaServer instance for local provider
+            this.llamaServer = new LlamaServer();
         }
     }
 
@@ -160,7 +148,7 @@ export class LLMChatService {
     }
 
     /**
-     * Initialize the local LLM worker (only needed for local provider)
+     * Initialize the local LLM server (only needed for local provider)
      */
     async initialize(): Promise<void> {
         if (this.provider === 'openai') {
@@ -168,89 +156,49 @@ export class LLMChatService {
             return;
         }
 
-        if (this.worker && this.workerReady) {
+        if (!this.llamaServer) {
+            this.llamaServer = new LlamaServer();
+        }
+
+        if (this.llamaServer.isRunning()) {
             return;
         }
 
-        return new Promise((resolve, reject) => {
-            try {
-                const workerPath = path.join(__dirname, 'llm-worker.js');
-                this.worker = new Worker(workerPath);
+        // Get model path
+        const modelsDir = this.llamaServer.getModelsDir();
+        const modelPath = path.join(modelsDir, QWEN3_MODEL.filename);
 
-                this.worker.on('message', (message: WorkerMessage) => {
-                    this.handleWorkerMessage(message, resolve);
-                });
+        // Download model if not present
+        if (!this.llamaServer.modelExists(modelPath)) {
+            console.log(`[LLMChat] Downloading model ${QWEN3_MODEL.name}...`);
+            this.downloadProgressCallback?.({
+                status: 'downloading',
+                file: QWEN3_MODEL.filename,
+                progress: 0
+            });
 
-                this.worker.on('error', (error) => {
-                    console.error('LLM Worker error:', error);
-                    if (!this.workerReady) {
-                        reject(error);
-                    }
-                    // Reject all pending requests
-                    for (const [id, pending] of this.pendingRequests) {
-                        pending.reject(error);
-                        this.pendingRequests.delete(id);
-                    }
-                });
-
-                this.worker.on('exit', (code) => {
-                    console.log(`LLM Worker exited with code ${code}`);
-                    this.workerReady = false;
-                    this.worker = null;
-                });
-
-                // Send initialization message
-                this.worker.postMessage({ type: 'init' });
-
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    private handleWorkerMessage(message: WorkerMessage, initResolve?: (value: void) => void): void {
-        switch (message.type) {
-            case 'ready':
-                console.log('LLM Worker is ready');
-                this.workerReady = true;
-                if (initResolve) {
-                    initResolve();
+            await this.llamaServer.downloadModel(
+                QWEN3_MODEL.repoId,
+                QWEN3_MODEL.filename,
+                modelPath,
+                (progress) => {
+                    this.downloadProgressCallback?.(progress);
                 }
-                break;
-
-            case 'download-progress':
-                if (this.downloadProgressCallback && message.progress) {
-                    this.downloadProgressCallback(message.progress);
-                }
-                break;
-
-            case 'response':
-                if (message.requestId) {
-                    const pending = this.pendingRequests.get(message.requestId);
-                    if (pending) {
-                        pending.resolve({
-                            message: message.message!,
-                            finishReason: message.finishReason as any,
-                            usage: message.usage
-                        });
-                        this.pendingRequests.delete(message.requestId);
-                    }
-                }
-                break;
-
-            case 'error':
-                if (message.requestId) {
-                    const pending = this.pendingRequests.get(message.requestId);
-                    if (pending) {
-                        pending.reject(new Error(message.error || 'Unknown error'));
-                        this.pendingRequests.delete(message.requestId);
-                    }
-                } else if (initResolve) {
-                    // Error during initialization
-                    throw new Error(message.error || 'Failed to initialize LLM worker');
-                }
-                break;
+            );
         }
+
+        // Start llama-server
+        console.log(`[LLMChat] Starting llama-server with model ${QWEN3_MODEL.name}...`);
+        await this.llamaServer.start({
+            modelPath,
+            port: LLAMA_SERVER_PORT,
+            contextSize: 4096,
+            threads: 4
+        }, (progress) => {
+            this.downloadProgressCallback?.(progress);
+        });
+
+        console.log('[LLMChat] LlamaServer is ready');
     }
 
     /**
@@ -260,7 +208,7 @@ export class LLMChatService {
         if (this.provider === 'openai') {
             return this.chatWithOpenAI(options);
         } else {
-            return this.chatWithLocalLLM(options);
+            return this.chatWithLlamaServer(options);
         }
     }
 
@@ -339,37 +287,32 @@ export class LLMChatService {
         }
     }
 
-    private async chatWithLocalLLM(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
-        if (!this.worker || !this.workerReady) {
+    private async chatWithLlamaServer(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
+        if (!this.llamaServer || !this.llamaServer.isRunning()) {
             await this.initialize();
         }
 
-        return new Promise((resolve, reject) => {
-            const requestId = `req-${++this.requestCounter}`;
-
-            this.pendingRequests.set(requestId, { resolve, reject });
-
-            this.worker!.postMessage({
-                type: 'chat',
-                requestId,
+        try {
+            const result = await this.llamaServer!.chatCompletion({
                 messages: options.messages,
                 tools: options.tools,
                 temperature: options.temperature ?? 0.7,
                 maxTokens: options.maxTokens ?? 2048
             });
 
-            // Timeout after 5 minutes for local model
-            setTimeout(() => {
-                if (this.pendingRequests.has(requestId)) {
-                    this.pendingRequests.delete(requestId);
-                    reject(new Error('LLM request timed out after 5 minutes'));
-                }
-            }, 5 * 60 * 1000);
-        });
+            return {
+                message: result.message,
+                finishReason: result.finishReason as 'stop' | 'tool_calls' | 'length' | 'error',
+                usage: result.usage
+            };
+        } catch (error: any) {
+            console.error('LlamaServer chat error:', error);
+            throw error;
+        }
     }
 
     /**
-     * Terminate the worker
+     * Terminate the LLM service
      */
     async terminate(): Promise<void> {
         if (this.isTerminating) {
@@ -377,22 +320,11 @@ export class LLMChatService {
         }
         this.isTerminating = true;
 
-        // Reject all pending requests
-        for (const [id, pending] of this.pendingRequests) {
-            pending.reject(new Error('LLM service terminated'));
-            this.pendingRequests.delete(id);
+        if (this.llamaServer) {
+            await this.llamaServer.stop();
+            this.llamaServer = null;
         }
 
-        if (this.worker) {
-            try {
-                await this.worker.terminate();
-            } catch (error) {
-                console.error('Error terminating LLM worker:', error);
-            }
-            this.worker = null;
-        }
-
-        this.workerReady = false;
         this.isTerminating = false;
     }
 }
