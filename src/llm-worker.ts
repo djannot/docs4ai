@@ -36,9 +36,10 @@ interface WorkerRequest {
     maxTokens?: number;
 }
 
-// Model configuration - Qwen3-1.7B-ONNX for function calling support
-// Note: This model is ~3GB and requires sufficient RAM
-const MODEL_ID = 'onnx-community/Qwen3-1.7B-ONNX';
+// Model configuration - Qwen2.5-0.5B-Instruct for better stability
+// Note: Qwen3-1.7B causes SIGTRAP crashes on macOS ARM64 due to ONNX runtime issues
+// Qwen2.5-0.5B is smaller (~1GB) but still supports function calling
+const MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct';
 
 // Global state
 let pipeline: any = null;
@@ -90,8 +91,10 @@ async function initializeModel() {
         sendProgress('downloading', 'model files');
 
         // Create text generation pipeline with progress tracking
+        // Use wasm device explicitly for better stability on macOS ARM64
         console.log('LLM Worker: Creating text generation pipeline...');
         pipeline = await createPipeline('text-generation', MODEL_ID, {
+            device: 'wasm',
             progress_callback: (progress: any) => {
                 if (progress.status === 'progress') {
                     const percent = progress.progress ? Math.round(progress.progress) : 0;
@@ -118,7 +121,7 @@ async function initializeModel() {
 
 /**
  * Format messages for the model using ChatML format
- * Qwen3 uses the standard ChatML format with im_start/im_end tokens
+ * Qwen2.5 uses the standard ChatML format with im_start/im_end tokens
  */
 function formatMessages(messages: ChatMessage[], tools?: ToolDefinition[]): string {
     let prompt = '';

@@ -932,7 +932,7 @@
                 <label for="llmProvider" data-i18n="chat.llmProvider">LLM Provider:</label>
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
                     <option value="openai" data-i18n="chat.openaiOption">OpenAI (gpt-4o-mini)</option>
-                    <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local Qwen3 (1.7B, ~3GB)</option>
+                    <option value="local-qwen3" data-i18n="chat.localQwen2.5Option">Local Qwen2.5 (0.5B, ~1GB)</option>
                 </select>
                 <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
                     Uses OpenAI API for chat. Requires API key.
@@ -1253,6 +1253,81 @@
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        /* Markdown styles for chat messages */
+        .chat-message-content p {
+            margin: 0 0 8px 0;
+        }
+
+        .chat-message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .chat-message-content .md-link {
+            color: #007aff;
+            text-decoration: none;
+        }
+
+        .chat-message-content .md-link:hover {
+            text-decoration: underline;
+        }
+
+        .chat-message-content .md-code-block {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+        }
+
+        .chat-message-content .md-code-block code {
+            background: none;
+            padding: 0;
+        }
+
+        .chat-message-content .md-inline-code {
+            background: rgba(0, 0, 0, 0.06);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.9em;
+        }
+
+        .chat-message-content .md-header {
+            margin: 12px 0 8px 0;
+            font-weight: 600;
+        }
+
+        .chat-message-content h2.md-header {
+            font-size: 1.3em;
+        }
+
+        .chat-message-content h3.md-header {
+            font-size: 1.15em;
+        }
+
+        .chat-message-content h4.md-header {
+            font-size: 1em;
+        }
+
+        .chat-message-content .md-list {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .chat-message-content .md-list-item {
+            margin: 4px 0;
+        }
+
+        .chat-message-content strong {
+            font-weight: 600;
+        }
+
+        .chat-message-content em {
+            font-style: italic;
         }
     </style>
 
@@ -2726,6 +2801,69 @@
             }
         }
 
+        /**
+         * Simple markdown renderer for chat messages
+         * Supports: bold, italic, links, code blocks, inline code, lists, headers
+         */
+        function renderMarkdown(text) {
+            if (!text) return '';
+
+            // Escape HTML first to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Code blocks (```...```) - must be processed first
+            html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+                return `<pre class="md-code-block"><code>${code.trim()}</code></pre>`;
+            });
+
+            // Inline code (`...`)
+            html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+            // Bold (**...**)
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+            // Italic (*...*)
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+            // Links [text](url) - unescape the URL part
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+                // Decode HTML entities in URL
+                const decodedUrl = url.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                return `<a href="${decodedUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${text}</a>`;
+            });
+
+            // Headers (## Header)
+            html = html.replace(/^### (.+)$/gm, '<h4 class="md-header">$1</h4>');
+            html = html.replace(/^## (.+)$/gm, '<h3 class="md-header">$1</h3>');
+            html = html.replace(/^# (.+)$/gm, '<h2 class="md-header">$1</h2>');
+
+            // Unordered lists (- item)
+            html = html.replace(/^- (.+)$/gm, '<li class="md-list-item">$1</li>');
+            html = html.replace(/(<li class="md-list-item">.*<\/li>\n?)+/g, '<ul class="md-list">$&</ul>');
+
+            // Numbered lists (1. item)
+            html = html.replace(/^\d+\. (.+)$/gm, '<li class="md-list-item">$1</li>');
+
+            // Paragraphs (double newlines)
+            html = html.replace(/\n\n/g, '</p><p>');
+
+            // Single newlines to <br> (except within code blocks and lists)
+            html = html.replace(/\n/g, '<br>');
+
+            // Wrap in paragraph
+            html = '<p>' + html + '</p>';
+
+            // Clean up empty paragraphs
+            html = html.replace(/<p><\/p>/g, '');
+            html = html.replace(/<p>(<pre|<ul|<ol|<h[2-4])/g, '$1');
+            html = html.replace(/(<\/pre>|<\/ul>|<\/ol>|<\/h[2-4]>)<\/p>/g, '$1');
+
+            return html;
+        }
+
         function addMessageToUI(role, content, toolCalls = null) {
             const messagesEl = document.getElementById('chatMessages');
 
@@ -2738,7 +2876,13 @@
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'chat-message-content';
-            contentDiv.textContent = content;
+
+            // Render markdown for assistant messages, plain text for user
+            if (role === 'assistant') {
+                contentDiv.innerHTML = renderMarkdown(content);
+            } else {
+                contentDiv.textContent = content;
+            }
 
             messageDiv.appendChild(roleLabel);
 
