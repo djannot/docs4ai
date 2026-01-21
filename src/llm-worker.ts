@@ -36,12 +36,14 @@ interface WorkerRequest {
     maxTokens?: number;
 }
 
-// Model configuration
-const MODEL_ID = 'onnx-community/Qwen3-1.7B-ONNX';
+// Model configuration - Using smaller SmolLM2 model for better compatibility
+// Qwen3-1.7B is too large and causes crashes in Electron
+const MODEL_ID = 'HuggingFaceTB/SmolLM2-360M-Instruct';
 
 // Global state
 let pipeline: any = null;
 let isInitializing = false;
+let initPromiseResolve: ((value: void) => void) | null = null;
 
 /**
  * Send download progress to main thread
@@ -57,7 +59,13 @@ function sendProgress(status: 'downloading' | 'ready' | 'error', file?: string, 
  * Initialize the model pipeline
  */
 async function initializeModel() {
-    if (pipeline || isInitializing) {
+    if (pipeline) {
+        parentPort?.postMessage({ type: 'ready' });
+        return;
+    }
+
+    if (isInitializing) {
+        // Wait for existing initialization
         return;
     }
 
@@ -69,9 +77,13 @@ async function initializeModel() {
         const createPipeline = transformers.pipeline;
         const env = transformers.env as any;
 
-        // Configure environment
+        // Configure environment for Node.js
         if (env) {
             env.allowRemoteModels = true;
+            // Use ONNX backend for Node.js
+            if (env.backends && env.backends.onnx) {
+                env.backends.onnx.wasm = { numThreads: 1 };
+            }
         }
 
         console.log(`LLM Worker: Loading model ${MODEL_ID}...`);
@@ -80,7 +92,6 @@ async function initializeModel() {
         // Create text generation pipeline with progress tracking
         console.log('LLM Worker: Creating text generation pipeline...');
         pipeline = await createPipeline('text-generation', MODEL_ID, {
-            quantized: true,  // Use quantized model for efficiency
             progress_callback: (progress: any) => {
                 if (progress.status === 'progress') {
                     const percent = progress.progress ? Math.round(progress.progress) : 0;
@@ -106,10 +117,10 @@ async function initializeModel() {
 }
 
 /**
- * Format messages for the model using chat template
+ * Format messages for the model using ChatML format
+ * SmolLM2-Instruct uses the standard ChatML format with im_start/im_end tokens
  */
 function formatMessages(messages: ChatMessage[], tools?: ToolDefinition[]): string {
-    // Qwen3 uses a specific chat format
     let prompt = '';
 
     // Add system message with tools if available
@@ -138,7 +149,7 @@ function formatMessages(messages: ChatMessage[], tools?: ToolDefinition[]): stri
 Only use this format when you need to search or retrieve information. For normal conversation, respond naturally without the JSON format.`;
     }
 
-    // Build the prompt using Qwen3 chat format
+    // Build the prompt using ChatML format
     if (systemContent.trim()) {
         prompt += `<|im_start|>system\n${systemContent.trim()}<|im_end|>\n`;
     }

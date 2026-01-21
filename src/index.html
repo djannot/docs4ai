@@ -932,7 +932,7 @@
                 <label for="llmProvider">LLM Provider:</label>
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
                     <option value="openai">OpenAI (gpt-4o-mini)</option>
-                    <option value="local-qwen3">Local Qwen3 1.7B (Free, ~3GB)</option>
+                    <option value="local-qwen3">Local SmolLM2 360M (Free, ~700MB)</option>
                 </select>
                 <div class="info" id="llmProviderInfo" style="margin-top: 4px;">
                     Uses OpenAI API for chat. Requires API key.
@@ -2461,7 +2461,7 @@
                         infoEl.textContent = 'Uses OpenAI API for chat. Requires API key.';
                     } else {
                         apiKeyGroup.style.display = 'none';
-                        infoEl.textContent = 'Runs locally on your machine. First use will download ~3GB model.';
+                        infoEl.textContent = 'Runs locally on your machine. First use will download ~700MB model.';
                     }
                 });
             }
@@ -2499,11 +2499,40 @@
                 return;
             }
 
-            // Show modal
-            document.getElementById('chatModal').classList.add('active');
+            // For local models, show download progress and wait for model to be ready
+            if (llmProvider === 'local-qwen3') {
+                const openBtn = document.getElementById('openChatBtn');
+                openBtn.disabled = true;
+                openBtn.textContent = 'Initializing model...';
 
-            // Start chat session
-            await startChatSession(llmProvider, chatApiKey);
+                // Show download progress area
+                document.getElementById('llmDownloadProgress').style.display = 'block';
+            }
+
+            // Start chat session (this will download model if needed)
+            const success = await startChatSession(llmProvider, chatApiKey);
+
+            // Reset button state
+            const openBtn = document.getElementById('openChatBtn');
+            openBtn.disabled = false;
+            openBtn.textContent = 'Open Chat';
+
+            // Hide download progress
+            document.getElementById('llmDownloadProgress').style.display = 'none';
+
+            // Only open modal if session started successfully
+            if (success) {
+                document.getElementById('chatModal').classList.add('active');
+                // Reset chat messages display
+                const messagesEl = document.getElementById('chatMessages');
+                messagesEl.innerHTML = `
+                    <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">Chat with your documents</h3>
+                        <p>Ask questions about your synced documents. The AI will search and reference them automatically.</p>
+                    </div>
+                `;
+            }
         }
 
         function closeChatModal() {
@@ -2532,7 +2561,7 @@
 
                 if (result.success) {
                     chatActive = true;
-                    updateChatStatus(`Connected (${llmProvider === 'openai' ? 'OpenAI' : 'Qwen3 Local'})`);
+                    updateChatStatus(`Connected (${llmProvider === 'openai' ? 'OpenAI' : 'SmolLM2 Local'})`);
                     // Clear previous messages if any
                     chatMessages = [];
                     // Add system message
@@ -2540,13 +2569,16 @@
                         role: 'system',
                         content: 'You are a helpful assistant that answers questions about the user\'s documents. When asked a question, search the documents using the available tools and provide accurate answers based on the content found. Always cite the source documents when providing information from them.'
                     });
+                    return true;
                 } else {
                     updateChatStatus('Connection failed');
                     showChatError(result.error);
+                    return false;
                 }
             } catch (error) {
                 updateChatStatus('Connection failed');
                 showChatError(error.message);
+                return false;
             }
         }
 
