@@ -147,10 +147,12 @@ export class EmbeddingService {
     private restartAttempts = 0;
     private readonly MAX_RESTART_ATTEMPTS = 3;
     private readonly RESTART_DELAY_MS = 1000;
+    private readonly WORKER_REQUEST_TIMEOUT_MS = 60000; // 60 seconds timeout per request
 
     // Request queue for sequential processing
     private requestQueue: QueuedRequest[] = [];
     private currentRequestId: string | null = null;
+    private currentRequestTimer: NodeJS.Timeout | null = null;
 
     constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
         this.provider = provider;
@@ -235,6 +237,8 @@ export class EmbeddingService {
                         }
                     } else if (response.type === 'embedding') {
                         console.log(`[Queue] Received embedding response for ${response.id}`);
+                        // Clear the timeout timer
+                        this.clearRequestTimer();
                         const pending = this.pendingRequests.get(response.id);
                         if (pending) {
                             this.pendingRequests.delete(response.id);
@@ -250,6 +254,8 @@ export class EmbeddingService {
                         this.processNextInQueue();
                     } else if (response.type === 'error') {
                         console.log(`[Queue] Received error response for ${response.id}: ${response.error}`);
+                        // Clear the timeout timer
+                        this.clearRequestTimer();
                         if (response.id === 'init') {
                             reject(new Error(response.error || 'Failed to initialize worker'));
                         } else {
@@ -270,6 +276,7 @@ export class EmbeddingService {
                     console.error('Embedding worker error:', error);
                     this.isWorkerReady = false;
                     this.currentRequestId = null;
+                    this.clearRequestTimer();
 
                     // Reject all pending requests
                     for (const [id, pending] of this.pendingRequests) {
@@ -419,6 +426,9 @@ export class EmbeddingService {
     async terminate(): Promise<void> {
         this.isShuttingDown = true; // Prevent auto-restart
 
+        // Clear any pending request timer
+        this.clearRequestTimer();
+
         // Reject all queued requests
         for (const req of this.requestQueue) {
             req.reject(new Error('Service shutting down'));
@@ -487,6 +497,51 @@ export class EmbeddingService {
      */
     isProcessing(): boolean {
         return this.currentRequestId !== null;
+    }
+
+    /**
+     * Clear the current request timeout timer
+     */
+    private clearRequestTimer(): void {
+        if (this.currentRequestTimer) {
+            clearTimeout(this.currentRequestTimer);
+            this.currentRequestTimer = null;
+        }
+    }
+
+    /**
+     * Start a timeout timer for the current request
+     */
+    private startRequestTimer(requestId: string): void {
+        this.clearRequestTimer();
+        this.currentRequestTimer = setTimeout(() => {
+            this.handleRequestTimeout(requestId);
+        }, this.WORKER_REQUEST_TIMEOUT_MS);
+    }
+
+    /**
+     * Handle worker request timeout - restart worker and continue queue
+     */
+    private handleRequestTimeout(requestId: string): void {
+        console.error(`[Queue] Request ${requestId} timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms - worker may be stuck`);
+
+        // Clear the timer
+        this.currentRequestTimer = null;
+
+        // Reject the timed-out request
+        const pending = this.pendingRequests.get(requestId);
+        if (pending) {
+            this.pendingRequests.delete(requestId);
+            pending.reject(new Error(`Worker request timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms`));
+        }
+
+        // Mark worker as not ready and trigger restart
+        this.isWorkerReady = false;
+        this.currentRequestId = null;
+
+        // Trigger worker crash handling which will restart and retry queued requests
+        console.log('[Queue] Triggering worker restart due to timeout...');
+        this.handleWorkerCrash();
     }
 
     async validateApiKey(): Promise<boolean> {
@@ -610,6 +665,9 @@ export class EmbeddingService {
 
         console.log(`[Queue] Sending request ${queuedRequest.id} to worker (text length: ${queuedRequest.text.length})`);
         this.worker!.postMessage(request);
+
+        // Start timeout timer for this request
+        this.startRequestTimer(queuedRequest.id);
     }
 
     private async generateOpenAIEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
