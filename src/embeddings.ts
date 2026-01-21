@@ -122,6 +122,15 @@ export interface DownloadProgress {
     modelName?: string;
 }
 
+// Queue item for sequential processing
+interface QueuedRequest {
+    id: string;
+    text: string;
+    resolve: (value: { embedding: number[]; tokens: number }) => void;
+    reject: (error: Error) => void;
+    retried: boolean;
+}
+
 export class EmbeddingService {
     private client: OpenAI | null = null;
     private openaiModel = 'text-embedding-3-large';
@@ -138,6 +147,11 @@ export class EmbeddingService {
     private restartAttempts = 0;
     private readonly MAX_RESTART_ATTEMPTS = 3;
     private readonly RESTART_DELAY_MS = 1000;
+
+    // Request queue for sequential processing
+    private requestQueue: QueuedRequest[] = [];
+    private isProcessingQueue = false;
+    private currentRequestId: string | null = null;
 
     constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
         this.provider = provider;
@@ -229,6 +243,9 @@ export class EmbeddingService {
                                 tokens: response.tokens!
                             });
                         }
+                        // Process next item in queue
+                        this.currentRequestId = null;
+                        this.processNextInQueue();
                     } else if (response.type === 'error') {
                         if (response.id === 'init') {
                             reject(new Error(response.error || 'Failed to initialize worker'));
@@ -238,6 +255,9 @@ export class EmbeddingService {
                                 this.pendingRequests.delete(response.id);
                                 pending.reject(new Error(response.error || 'Worker error'));
                             }
+                            // Process next item in queue even on error
+                            this.currentRequestId = null;
+                            this.processNextInQueue();
                         }
                     }
                 });
@@ -246,12 +266,19 @@ export class EmbeddingService {
                 this.worker.on('error', (error) => {
                     console.error('Embedding worker error:', error);
                     this.isWorkerReady = false;
-                    
+                    this.currentRequestId = null;
+
                     // Reject all pending requests
                     for (const [id, pending] of this.pendingRequests) {
                         pending.reject(error);
                     }
                     this.pendingRequests.clear();
+
+                    // Reject all queued requests
+                    for (const req of this.requestQueue) {
+                        req.reject(error);
+                    }
+                    this.requestQueue = [];
                 });
 
                 // Handle worker exit
@@ -297,22 +324,41 @@ export class EmbeddingService {
                 pending.reject(new Error('Worker crashed repeatedly, service unavailable'));
             }
             this.pendingRequests.clear();
+            // Reject all queued requests
+            for (const req of this.requestQueue) {
+                req.reject(new Error('Worker crashed repeatedly, service unavailable'));
+            }
+            this.requestQueue = [];
+            this.currentRequestId = null;
             return;
         }
 
         console.log(`Attempting worker restart (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})...`);
 
         // Save pending requests that haven't been retried yet
-        const requestsToRetry: Array<{ id: string; text: string; resolve: (value: any) => void; reject: (error: Error) => void }> = [];
+        const requestsToRetry: QueuedRequest[] = [];
+
+        // Save the current in-flight request
         for (const [id, pending] of this.pendingRequests) {
             if (!pending.retried) {
-                requestsToRetry.push({ id, text: pending.text, resolve: pending.resolve, reject: pending.reject });
+                requestsToRetry.push({
+                    id,
+                    text: pending.text,
+                    resolve: pending.resolve,
+                    reject: pending.reject,
+                    retried: true // Mark as retried
+                });
             } else {
                 // Already retried once, reject it
                 pending.reject(new Error('Worker crashed during retry'));
             }
         }
         this.pendingRequests.clear();
+        this.currentRequestId = null;
+
+        // Save queued requests (they haven't been sent yet, so don't mark as retried)
+        const queuedToRetry = [...this.requestQueue];
+        this.requestQueue = [];
 
         // Wait before restart (allows ONNX runtime to fully unload)
         await new Promise(resolve => setTimeout(resolve, this.RESTART_DELAY_MS));
@@ -320,6 +366,9 @@ export class EmbeddingService {
         if (this.isShuttingDown) {
             // Shutdown was requested during the delay
             for (const req of requestsToRetry) {
+                req.reject(new Error('Service shutting down'));
+            }
+            for (const req of queuedToRetry) {
                 req.reject(new Error('Service shutting down'));
             }
             return;
@@ -333,28 +382,29 @@ export class EmbeddingService {
             // Reset restart attempts on successful restart
             this.restartAttempts = 0;
 
-            // Retry pending requests
-            console.log(`Worker restarted, retrying ${requestsToRetry.length} pending request(s)...`);
-            for (const req of requestsToRetry) {
-                const newId = `req_${++this.requestId}`;
-                this.pendingRequests.set(newId, {
-                    resolve: req.resolve,
-                    reject: req.reject,
-                    text: req.text,
-                    retried: true
-                });
+            // Re-queue all requests (in-flight first, then queued)
+            const totalToRetry = requestsToRetry.length + queuedToRetry.length;
+            console.log(`Worker restarted, re-queueing ${totalToRetry} request(s)...`);
 
-                const request: EmbeddingRequest = {
-                    id: newId,
-                    type: 'embed',
-                    text: req.text
-                };
-                this.worker!.postMessage(request);
+            // Add in-flight requests back to queue first (they were being processed)
+            for (const req of requestsToRetry) {
+                this.requestQueue.push(req);
             }
+
+            // Add previously queued requests
+            for (const req of queuedToRetry) {
+                this.requestQueue.push(req);
+            }
+
+            // Start processing the queue
+            this.processNextInQueue();
         } catch (error) {
             console.error('Failed to restart worker:', error);
             // Reject all saved requests
             for (const req of requestsToRetry) {
+                req.reject(new Error(`Worker restart failed: ${error}`));
+            }
+            for (const req of queuedToRetry) {
                 req.reject(new Error(`Worker restart failed: ${error}`));
             }
         }
@@ -365,6 +415,13 @@ export class EmbeddingService {
      */
     async terminate(): Promise<void> {
         this.isShuttingDown = true; // Prevent auto-restart
+
+        // Reject all queued requests
+        for (const req of this.requestQueue) {
+            req.reject(new Error('Service shutting down'));
+        }
+        this.requestQueue = [];
+        this.currentRequestId = null;
 
         if (this.worker) {
             const request: EmbeddingRequest = { id: 'shutdown', type: 'shutdown' };
@@ -413,6 +470,20 @@ export class EmbeddingService {
 
     getModelConfig(): LocalModelConfig | null {
         return this.modelConfig;
+    }
+
+    /**
+     * Get the current queue size (for monitoring/debugging)
+     */
+    getQueueSize(): number {
+        return this.requestQueue.length;
+    }
+
+    /**
+     * Check if currently processing a request
+     */
+    isProcessing(): boolean {
+        return this.currentRequestId !== null;
     }
 
     async validateApiKey(): Promise<boolean> {
@@ -468,18 +539,66 @@ export class EmbeddingService {
         return new Promise((resolve, reject) => {
             const id = `req_${++this.requestId}`;
 
-            // Store the pending request with text for potential retry
-            this.pendingRequests.set(id, { resolve, reject, text, retried: false });
-
-            // Send request to worker
-            const request: EmbeddingRequest = {
+            // Add to queue instead of sending directly
+            const queuedRequest: QueuedRequest = {
                 id,
-                type: 'embed',
-                text
+                text,
+                resolve,
+                reject,
+                retried: false
             };
 
-            this.worker!.postMessage(request);
+            this.requestQueue.push(queuedRequest);
+            console.log(`[Queue] Added request ${id}, queue size: ${this.requestQueue.length}`);
+
+            // Start processing if not already
+            this.processNextInQueue();
         });
+    }
+
+    /**
+     * Process the next request in the queue (one at a time)
+     */
+    private processNextInQueue(): void {
+        // Don't process if already processing or queue is empty
+        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+            return;
+        }
+
+        // Don't process if worker is not ready
+        if (!this.worker || !this.isWorkerReady) {
+            console.log('[Queue] Worker not ready, waiting...');
+            return;
+        }
+
+        // Get next request from queue
+        const queuedRequest = this.requestQueue.shift();
+        if (!queuedRequest) {
+            return;
+        }
+
+        this.isProcessingQueue = true;
+        this.currentRequestId = queuedRequest.id;
+
+        console.log(`[Queue] Processing request ${queuedRequest.id}, remaining in queue: ${this.requestQueue.length}`);
+
+        // Store in pending requests for response handling
+        this.pendingRequests.set(queuedRequest.id, {
+            resolve: queuedRequest.resolve,
+            reject: queuedRequest.reject,
+            text: queuedRequest.text,
+            retried: queuedRequest.retried
+        });
+
+        // Send request to worker
+        const request: EmbeddingRequest = {
+            id: queuedRequest.id,
+            type: 'embed',
+            text: queuedRequest.text
+        };
+
+        this.worker!.postMessage(request);
+        this.isProcessingQueue = false;
     }
 
     private async generateOpenAIEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
