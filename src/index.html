@@ -908,7 +908,7 @@
         <!-- MCP Server Card (shared across profiles) -->
         <div class="card" style="margin-top: 16px;">
             <div class="card-title">🌐 MCP Server</div>
-            
+
             <div class="input-group">
                 <div class="input-row">
                     <label for="mcpPort" style="margin: 0; white-space: nowrap;">Port:</label>
@@ -916,12 +916,48 @@
                     <button class="btn-secondary" id="mcpToggleBtn" onclick="toggleMcpServer()">Start Server</button>
                 </div>
             </div>
-            
+
             <div id="mcpStatus" class="info" style="margin-top: 8px;">
                 Server stopped
             </div>
-            
+
             <button class="btn-secondary" id="mcpConfigureBtn" style="display: none; width: 100%; margin-top: 8px;" onclick="openMcpConfig()">Configure Clients</button>
+        </div>
+
+        <!-- Chat with LLM Card -->
+        <div class="card" style="margin-top: 16px;">
+            <div class="card-title">💬 Chat with Documents</div>
+
+            <div class="input-group">
+                <label for="llmProvider">LLM Provider:</label>
+                <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
+                    <option value="openai">OpenAI (gpt-4o-mini)</option>
+                    <option value="local-qwen3">Local Qwen3 1.7B (Free, ~3GB)</option>
+                </select>
+                <div class="info" id="llmProviderInfo" style="margin-top: 4px;">
+                    Uses OpenAI API for chat. Requires API key.
+                </div>
+            </div>
+
+            <div class="input-group" id="chatApiKeyGroup">
+                <label for="chatApiKey">OpenAI API Key:</label>
+                <input type="password" id="chatApiKey" placeholder="sk-...">
+                <div class="info">Same key used for embeddings can be used here.</div>
+            </div>
+
+            <div class="input-group" id="llmDownloadProgress" style="display: none;">
+                <div class="download-progress-info" style="font-size: 14px; color: #1565c0; margin-bottom: 8px;">
+                    <span id="llmDownloadFile">Downloading model...</span>
+                </div>
+                <div class="download-progress-bar-container" style="height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">
+                    <div class="download-progress-bar" id="llmDownloadBar" style="height: 100%; background: linear-gradient(90deg, #42a5f5, #7e57c2); border-radius: 4px; transition: width 0.3s ease; width: 0%"></div>
+                </div>
+                <div class="download-progress-text" id="llmDownloadText" style="font-size: 12px; color: #5e35b1; text-align: center;">0%</div>
+            </div>
+
+            <button class="btn-primary" id="openChatBtn" onclick="openChatModal()" style="width: 100%; margin-top: 8px;">
+                Open Chat
+            </button>
         </div>
     </div>
 
@@ -1032,6 +1068,139 @@
             </div>
         </div>
     </div>
+
+    <!-- Chat Modal -->
+    <div class="modal-overlay" id="chatModal">
+        <div class="modal" style="max-width: 800px; height: 85vh;">
+            <div class="modal-header" style="border-bottom: 1px solid #e5e5ea;">
+                <h2>💬 Chat with Documents</h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="chatStatusIndicator" style="font-size: 12px; color: #86868b;">Not connected</span>
+                    <button class="modal-close" onclick="closeChatModal()">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; padding: 0; flex: 1; overflow: hidden;">
+                <!-- Chat Messages -->
+                <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px; background: #f5f5f7;">
+                    <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">Chat with your documents</h3>
+                        <p>Ask questions about your synced documents. The AI will search and reference them automatically.</p>
+                    </div>
+                </div>
+
+                <!-- Chat Input -->
+                <div style="border-top: 1px solid #e5e5ea; padding: 12px 16px; background: white;">
+                    <div style="display: flex; gap: 8px; align-items: flex-end;">
+                        <textarea id="chatInput" placeholder="Ask a question about your documents..."
+                            style="flex: 1; min-height: 44px; max-height: 120px; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; resize: none; font-family: inherit;"
+                            onkeydown="handleChatKeydown(event)"></textarea>
+                        <button class="btn-primary" id="chatSendBtn" onclick="sendChatMessage()" style="height: 44px; padding: 0 20px;">
+                            Send
+                        </button>
+                    </div>
+                    <div id="chatError" style="display: none; color: #ff3b30; font-size: 12px; margin-top: 8px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Chat Message Styles */
+        .chat-message {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-message.user {
+            align-items: flex-end;
+        }
+
+        .chat-message.assistant {
+            align-items: flex-start;
+        }
+
+        .chat-message-content {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.user .chat-message-content {
+            background: #0071e3;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-message.assistant .chat-message-content {
+            background: white;
+            color: #1d1d1f;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .chat-message-role {
+            font-size: 11px;
+            color: #86868b;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chat-typing {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 14px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .chat-typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #86868b;
+            border-radius: 50%;
+            animation: chatTyping 1.4s infinite;
+        }
+
+        .chat-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes chatTyping {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        .chat-tool-call {
+            background: #f0f7ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px 0;
+            font-size: 12px;
+            color: #0066cc;
+        }
+
+        .chat-tool-call-header {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .chat-tool-call-args {
+            font-family: monospace;
+            background: rgba(0,0,0,0.05);
+            padding: 4px 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
 
     <script>
         let profiles = [];
@@ -2273,6 +2442,285 @@
             });
         }
 
+        // ==================== Chat Functions ====================
+        let chatActive = false;
+        let chatMessages = []; // Store conversation history
+        let chatIsProcessing = false;
+
+        // Set up LLM provider change listener
+        function setupLlmProviderListener() {
+            const providerSelect = document.getElementById('llmProvider');
+            if (providerSelect) {
+                providerSelect.addEventListener('change', (e) => {
+                    const provider = e.target.value;
+                    const apiKeyGroup = document.getElementById('chatApiKeyGroup');
+                    const infoEl = document.getElementById('llmProviderInfo');
+
+                    if (provider === 'openai') {
+                        apiKeyGroup.style.display = 'block';
+                        infoEl.textContent = 'Uses OpenAI API for chat. Requires API key.';
+                    } else {
+                        apiKeyGroup.style.display = 'none';
+                        infoEl.textContent = 'Runs locally on your machine. First use will download ~3GB model.';
+                    }
+                });
+            }
+        }
+
+        // Copy API key from embeddings settings if available
+        function syncApiKeyFromEmbeddings() {
+            const chatApiKey = document.getElementById('chatApiKey');
+            const embeddingApiKey = document.getElementById(`apiKey-${activeProfileId}`);
+            if (chatApiKey && embeddingApiKey && embeddingApiKey.value && !chatApiKey.value) {
+                chatApiKey.value = embeddingApiKey.value;
+            }
+        }
+
+        async function openChatModal() {
+            if (!activeProfileId) {
+                alert('Please select a profile first.');
+                return;
+            }
+
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile?.databasePath) {
+                alert('Please configure a database path for this profile first.');
+                return;
+            }
+
+            // Sync API key from embeddings
+            syncApiKeyFromEmbeddings();
+
+            const llmProvider = document.getElementById('llmProvider').value;
+            const chatApiKey = document.getElementById('chatApiKey').value;
+
+            if (llmProvider === 'openai' && !chatApiKey) {
+                alert('Please enter an OpenAI API key for chat.');
+                return;
+            }
+
+            // Show modal
+            document.getElementById('chatModal').classList.add('active');
+
+            // Start chat session
+            await startChatSession(llmProvider, chatApiKey);
+        }
+
+        function closeChatModal() {
+            document.getElementById('chatModal').classList.remove('active');
+
+            // Stop chat session
+            if (activeProfileId) {
+                window.api.stopChat(activeProfileId);
+            }
+            chatActive = false;
+            updateChatStatus('Not connected');
+        }
+
+        async function startChatSession(llmProvider, apiKey) {
+            const statusEl = document.getElementById('chatStatusIndicator');
+            statusEl.textContent = 'Connecting...';
+            statusEl.style.color = '#ff9500';
+
+            try {
+                const result = await window.api.startChat(
+                    activeProfileId,
+                    llmProvider,
+                    apiKey,
+                    'gpt-4o-mini'
+                );
+
+                if (result.success) {
+                    chatActive = true;
+                    updateChatStatus(`Connected (${llmProvider === 'openai' ? 'OpenAI' : 'Qwen3 Local'})`);
+                    // Clear previous messages if any
+                    chatMessages = [];
+                    // Add system message
+                    chatMessages.push({
+                        role: 'system',
+                        content: 'You are a helpful assistant that answers questions about the user\'s documents. When asked a question, search the documents using the available tools and provide accurate answers based on the content found. Always cite the source documents when providing information from them.'
+                    });
+                } else {
+                    updateChatStatus('Connection failed');
+                    showChatError(result.error);
+                }
+            } catch (error) {
+                updateChatStatus('Connection failed');
+                showChatError(error.message);
+            }
+        }
+
+        function updateChatStatus(status) {
+            const statusEl = document.getElementById('chatStatusIndicator');
+            statusEl.textContent = status;
+            if (status.includes('Connected')) {
+                statusEl.style.color = '#34c759';
+            } else if (status === 'Not connected') {
+                statusEl.style.color = '#86868b';
+            } else {
+                statusEl.style.color = '#ff9500';
+            }
+        }
+
+        function showChatError(message) {
+            const errorEl = document.getElementById('chatError');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function handleChatKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        }
+
+        async function sendChatMessage() {
+            if (!chatActive || chatIsProcessing) return;
+
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            // Clear input
+            input.value = '';
+
+            // Remove welcome message if present
+            const welcomeEl = document.querySelector('.chat-welcome');
+            if (welcomeEl) {
+                welcomeEl.remove();
+            }
+
+            // Add user message to UI
+            addMessageToUI('user', message);
+
+            // Add to conversation history
+            chatMessages.push({ role: 'user', content: message });
+
+            // Show typing indicator
+            showTypingIndicator();
+            chatIsProcessing = true;
+
+            try {
+                const llmProvider = document.getElementById('llmProvider').value;
+                const chatApiKey = document.getElementById('chatApiKey').value;
+
+                const result = await window.api.sendChatMessage({
+                    profileId: activeProfileId,
+                    messages: chatMessages,
+                    llmProvider,
+                    openaiApiKey: chatApiKey,
+                    openaiModel: 'gpt-4o-mini',
+                    enableTools: true
+                });
+
+                // Hide typing indicator
+                hideTypingIndicator();
+
+                if (result.success) {
+                    // Add assistant response to UI
+                    addMessageToUI('assistant', result.message.content);
+
+                    // Add to conversation history
+                    chatMessages.push(result.message);
+                } else {
+                    showChatError(result.error);
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                showChatError(error.message);
+            } finally {
+                chatIsProcessing = false;
+            }
+        }
+
+        function addMessageToUI(role, content) {
+            const messagesEl = document.getElementById('chatMessages');
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}`;
+
+            const roleLabel = document.createElement('div');
+            roleLabel.className = 'chat-message-role';
+            roleLabel.textContent = role === 'user' ? 'You' : 'Assistant';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+            contentDiv.textContent = content;
+
+            messageDiv.appendChild(roleLabel);
+            messageDiv.appendChild(contentDiv);
+            messagesEl.appendChild(messageDiv);
+
+            // Scroll to bottom
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const messagesEl = document.getElementById('chatMessages');
+
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'chat-message assistant';
+            typingDiv.id = 'chatTypingIndicator';
+
+            const typingContent = document.createElement('div');
+            typingContent.className = 'chat-typing';
+            typingContent.innerHTML = `
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+            `;
+
+            typingDiv.appendChild(typingContent);
+            messagesEl.appendChild(typingDiv);
+
+            // Scroll to bottom
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('chatTypingIndicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // Listen for LLM download progress
+        window.api.onLlmDownloadProgress((data) => {
+            const { profileId, status, file, progress } = data;
+
+            if (profileId !== activeProfileId) return;
+
+            const progressEl = document.getElementById('llmDownloadProgress');
+            const fileEl = document.getElementById('llmDownloadFile');
+            const barEl = document.getElementById('llmDownloadBar');
+            const textEl = document.getElementById('llmDownloadText');
+
+            if (status === 'downloading') {
+                progressEl.style.display = 'block';
+                fileEl.textContent = file || 'Downloading model...';
+                barEl.style.width = `${progress || 0}%`;
+                textEl.textContent = `${progress || 0}%`;
+            } else if (status === 'ready') {
+                progressEl.style.display = 'none';
+            } else if (status === 'error') {
+                progressEl.style.display = 'none';
+                showChatError(data.error || 'Failed to download model');
+            }
+        });
+
+        // Listen for chat errors
+        window.api.onChatError((data) => {
+            if (data.profileId === activeProfileId) {
+                hideTypingIndicator();
+                showChatError(data.error);
+                chatIsProcessing = false;
+            }
+        });
+
         // Browser modal functions
         let currentView = 'files'; // 'files' or 'chunks'
         let selectedFilePath = null;
@@ -2655,7 +3103,7 @@
                 setTimeout(initializeApp, 100);
                 return;
             }
-            
+
             // Register language changed listener
             const listenerRegistered = registerLanguageChangedListener();
             if (!listenerRegistered) {
@@ -2663,8 +3111,9 @@
                     registerLanguageChangedListener();
                 }, 500);
             }
-            
+
             setupLanguageSelector(); // Set up language selector event listener
+            setupLlmProviderListener(); // Set up LLM provider change listener
             initLanguage().then(() => {
                 // Wait for translations to load before loading profiles
                 loadProfiles();

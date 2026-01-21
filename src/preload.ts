@@ -10,6 +10,42 @@ interface ProfileStats extends Stats {
     profileId: string;
 }
 
+interface ChatMessage {
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string;
+    tool_calls?: Array<{
+        id: string;
+        type: 'function';
+        function: {
+            name: string;
+            arguments: string;
+        };
+    }>;
+    tool_call_id?: string;
+    name?: string;
+}
+
+interface ChatOptions {
+    profileId: string;
+    messages: ChatMessage[];
+    llmProvider: 'local-qwen3' | 'openai';
+    openaiApiKey?: string;
+    openaiModel?: string;
+    enableTools?: boolean;
+    temperature?: number;
+    maxTokens?: number;
+}
+
+interface ChatResult {
+    message: ChatMessage;
+    finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
+    usage?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+    };
+}
+
 contextBridge.exposeInMainWorld('api', {
     getProfiles: () => ipcRenderer.invoke('get-profiles'),
     getProfileSettings: (profileId: string) => ipcRenderer.invoke('get-profile-settings', profileId),
@@ -51,5 +87,21 @@ contextBridge.exposeInMainWorld('api', {
     },
     onModelDownloadProgress: (callback: (data: { profileId: string; status: string; file?: string; percent?: number; modelName?: string }) => void) => {
         ipcRenderer.on('model-download-progress', (_event: IpcRendererEvent, data) => callback(data));
+    },
+
+    // Chat API
+    startChat: (profileId: string, llmProvider: 'local-qwen3' | 'openai', openaiApiKey?: string, openaiModel?: string) =>
+        ipcRenderer.invoke('start-chat', profileId, llmProvider, openaiApiKey, openaiModel),
+    stopChat: (profileId: string) => ipcRenderer.invoke('stop-chat', profileId),
+    sendChatMessage: (options: ChatOptions) => ipcRenderer.invoke('send-chat-message', options),
+    getChatStatus: (profileId: string) => ipcRenderer.invoke('get-chat-status', profileId),
+    onChatResponse: (callback: (data: { profileId: string; message: ChatMessage; finishReason: string; usage?: any }) => void) => {
+        ipcRenderer.on('chat-response', (_event: IpcRendererEvent, data) => callback(data));
+    },
+    onChatError: (callback: (data: { profileId: string; error: string }) => void) => {
+        ipcRenderer.on('chat-error', (_event: IpcRendererEvent, data) => callback(data));
+    },
+    onLlmDownloadProgress: (callback: (data: { profileId: string; status: string; file?: string; progress?: number; loaded?: number; total?: number; error?: string }) => void) => {
+        ipcRenderer.on('llm-download-progress', (_event: IpcRendererEvent, data) => callback(data));
     }
 });
