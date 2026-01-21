@@ -150,7 +150,6 @@ export class EmbeddingService {
 
     // Request queue for sequential processing
     private requestQueue: QueuedRequest[] = [];
-    private isProcessingQueue = false;
     private currentRequestId: string | null = null;
 
     constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
@@ -235,6 +234,7 @@ export class EmbeddingService {
                             });
                         }
                     } else if (response.type === 'embedding') {
+                        console.log(`[Queue] Received embedding response for ${response.id}`);
                         const pending = this.pendingRequests.get(response.id);
                         if (pending) {
                             this.pendingRequests.delete(response.id);
@@ -242,11 +242,14 @@ export class EmbeddingService {
                                 embedding: response.embedding!,
                                 tokens: response.tokens!
                             });
+                        } else {
+                            console.log(`[Queue] No pending request found for ${response.id} (may have timed out)`);
                         }
                         // Process next item in queue
                         this.currentRequestId = null;
                         this.processNextInQueue();
                     } else if (response.type === 'error') {
+                        console.log(`[Queue] Received error response for ${response.id}: ${response.error}`);
                         if (response.id === 'init') {
                             reject(new Error(response.error || 'Failed to initialize worker'));
                         } else {
@@ -560,8 +563,14 @@ export class EmbeddingService {
      * Process the next request in the queue (one at a time)
      */
     private processNextInQueue(): void {
-        // Don't process if already processing or queue is empty
-        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+        // Don't process if already waiting for a response
+        if (this.currentRequestId !== null) {
+            console.log(`[Queue] Already processing ${this.currentRequestId}, waiting...`);
+            return;
+        }
+
+        // Don't process if queue is empty
+        if (this.requestQueue.length === 0) {
             return;
         }
 
@@ -577,7 +586,6 @@ export class EmbeddingService {
             return;
         }
 
-        this.isProcessingQueue = true;
         this.currentRequestId = queuedRequest.id;
 
         console.log(`[Queue] Processing request ${queuedRequest.id}, remaining in queue: ${this.requestQueue.length}`);
@@ -597,8 +605,8 @@ export class EmbeddingService {
             text: queuedRequest.text
         };
 
+        console.log(`[Queue] Sending request ${queuedRequest.id} to worker (text length: ${queuedRequest.text.length})`);
         this.worker!.postMessage(request);
-        this.isProcessingQueue = false;
     }
 
     private async generateOpenAIEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
