@@ -345,7 +345,7 @@ export class McpServer {
                                     },
                                     {
                                         name: 'get_chunks',
-                                        description: 'Retrieve specific chunks from a document by file path. Use this to get more context from a document after finding it with query_documents. You can retrieve individual chunks or a range of chunks.',
+                                        description: 'Retrieve a range of chunks from a document by file path. Use this to get more context from a document after finding it with query_documents. Chunks are 0-indexed. If startIndex and endIndex are not provided, all chunks are returned.',
                                         inputSchema: {
                                             type: 'object',
                                             properties: {
@@ -353,10 +353,13 @@ export class McpServer {
                                                     type: 'string',
                                                     description: 'The file path (url) of the document to retrieve chunks from'
                                                 },
-                                                chunk_indices: {
-                                                    type: 'array',
-                                                    items: { type: 'number' },
-                                                    description: 'Array of chunk indices to retrieve (0-based). If not provided, returns all chunks.'
+                                                startIndex: {
+                                                    type: 'number',
+                                                    description: 'The starting chunk index (0-based, inclusive). If not provided, starts from the first chunk (index 0).'
+                                                },
+                                                endIndex: {
+                                                    type: 'number',
+                                                    description: 'The ending chunk index (0-based, inclusive). If not provided, retrieves all chunks from startIndex to the end.'
                                                 }
                                             },
                                             required: ['file_path']
@@ -480,7 +483,7 @@ export class McpServer {
                             }
 
                             try {
-                                const chunks = this.getChunksForFile(filePath, args?.chunk_indices);
+                                const chunks = this.getChunksForFile(filePath, args?.startIndex, args?.endIndex);
                                 
                                 if (chunks.length === 0) {
                                     res.json({
@@ -607,7 +610,7 @@ export class McpServer {
         return rows;
     }
 
-    private getChunksForFile(filePath: string, chunkIndices?: number[]): ChunkResult[] {
+    private getChunksForFile(filePath: string, startIndex?: number, endIndex?: number): ChunkResult[] {
         if (!this.dbPath) {
             throw new Error('Database not configured');
         }
@@ -617,22 +620,41 @@ export class McpServer {
 
         let rows: ChunkResult[];
 
-        if (chunkIndices && chunkIndices.length > 0) {
-            // Get specific chunks by index
-            const placeholders = chunkIndices.map(() => '?').join(',');
-            const stmt = db.prepare(`
-                SELECT
-                    chunk_id,
-                    content,
-                    section,
-                    heading_hierarchy,
-                    chunk_index,
-                    total_chunks
-                FROM vec_items
-                WHERE url = ? AND chunk_index IN (${placeholders})
-                ORDER BY chunk_index
-            `);
-            rows = stmt.all(filePath, ...chunkIndices) as ChunkResult[];
+        if (startIndex !== undefined || endIndex !== undefined) {
+            // Get chunks in the specified range
+            const start = startIndex ?? 0;
+
+            if (endIndex !== undefined) {
+                // Both start and end specified
+                const stmt = db.prepare(`
+                    SELECT
+                        chunk_id,
+                        content,
+                        section,
+                        heading_hierarchy,
+                        chunk_index,
+                        total_chunks
+                    FROM vec_items
+                    WHERE url = ? AND chunk_index >= ? AND chunk_index <= ?
+                    ORDER BY chunk_index
+                `);
+                rows = stmt.all(filePath, start, endIndex) as ChunkResult[];
+            } else {
+                // Only start specified, get from start to end
+                const stmt = db.prepare(`
+                    SELECT
+                        chunk_id,
+                        content,
+                        section,
+                        heading_hierarchy,
+                        chunk_index,
+                        total_chunks
+                    FROM vec_items
+                    WHERE url = ? AND chunk_index >= ?
+                    ORDER BY chunk_index
+                `);
+                rows = stmt.all(filePath, start) as ChunkResult[];
+            }
         } else {
             // Get all chunks for the file
             const stmt = db.prepare(`
