@@ -5,6 +5,17 @@ import * as sqliteVec from 'sqlite-vec';
 import { randomUUID } from 'crypto';
 import { EmbeddingService, EmbeddingProvider } from './embeddings';
 
+// Configuration constants
+const EMBEDDING_TIMEOUT_MS = 30000; // 30 second timeout for embedding generation
+const SESSION_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Clean up every 5 minutes
+const MAX_SESSIONS = 1000; // Maximum number of concurrent sessions
+
+interface SessionData {
+    createdAt: number;
+    lastAccessedAt: number;
+}
+
 interface QueryResult {
     chunk_id: string;
     distance: number;
@@ -36,11 +47,13 @@ export class McpServer {
     private app: express.Application;
     private server: Server | null = null;
     private dbPath: string | null = null;
+    private db: Database.Database | null = null; // Cached database connection
     private openaiApiKey: string | null = null;
     private embeddingProvider: EmbeddingProvider = 'local-e5-large';
     private embeddingService: EmbeddingService | null = null;
     private port: number;
-    private sessions: Map<string, boolean> = new Map();
+    private sessions: Map<string, SessionData> = new Map();
+    private sessionCleanupInterval: NodeJS.Timeout | null = null;
     private onCostUpdate: ((tokens: number, cost: number) => void) | null = null;
 
     constructor(port: number = 3333) {
@@ -48,6 +61,130 @@ export class McpServer {
         this.app = express();
         this.app.use(express.json());
         this.setupRoutes();
+        this.startSessionCleanup();
+    }
+
+    /**
+     * Get or create a cached database connection
+     */
+    private getDatabase(): Database.Database {
+        if (!this.dbPath) {
+            throw new Error('Database not configured');
+        }
+
+        if (!this.db) {
+            console.log('MCP Server: Creating new database connection');
+            this.db = new Database(this.dbPath);
+            sqliteVec.load(this.db);
+        }
+
+        return this.db;
+    }
+
+    /**
+     * Close the cached database connection
+     */
+    private closeDatabase(): void {
+        if (this.db) {
+            try {
+                this.db.close();
+            } catch (error) {
+                console.error('Error closing database:', error);
+            }
+            this.db = null;
+        }
+    }
+
+    /**
+     * Start periodic session cleanup
+     */
+    private startSessionCleanup(): void {
+        this.sessionCleanupInterval = setInterval(() => {
+            this.cleanupExpiredSessions();
+        }, SESSION_CLEANUP_INTERVAL_MS);
+    }
+
+    /**
+     * Stop session cleanup interval
+     */
+    private stopSessionCleanup(): void {
+        if (this.sessionCleanupInterval) {
+            clearInterval(this.sessionCleanupInterval);
+            this.sessionCleanupInterval = null;
+        }
+    }
+
+    /**
+     * Remove expired sessions from the map
+     */
+    private cleanupExpiredSessions(): void {
+        const now = Date.now();
+        let expiredCount = 0;
+
+        for (const [sessionId, data] of this.sessions) {
+            if (now - data.lastAccessedAt > SESSION_EXPIRY_MS) {
+                this.sessions.delete(sessionId);
+                expiredCount++;
+            }
+        }
+
+        if (expiredCount > 0) {
+            console.log(`MCP Server: Cleaned up ${expiredCount} expired sessions. Active sessions: ${this.sessions.size}`);
+        }
+    }
+
+    /**
+     * Create or update a session
+     */
+    private touchSession(sessionId: string): void {
+        const existing = this.sessions.get(sessionId);
+        const now = Date.now();
+
+        if (existing) {
+            existing.lastAccessedAt = now;
+        } else {
+            // Check if we're at max capacity
+            if (this.sessions.size >= MAX_SESSIONS) {
+                // Remove oldest session
+                let oldestId: string | null = null;
+                let oldestTime = Infinity;
+                for (const [id, data] of this.sessions) {
+                    if (data.lastAccessedAt < oldestTime) {
+                        oldestTime = data.lastAccessedAt;
+                        oldestId = id;
+                    }
+                }
+                if (oldestId) {
+                    this.sessions.delete(oldestId);
+                }
+            }
+
+            this.sessions.set(sessionId, {
+                createdAt: now,
+                lastAccessedAt: now
+            });
+        }
+    }
+
+    /**
+     * Wrap a promise with a timeout
+     */
+    private withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+            }, timeoutMs);
+
+            promise
+                .then((result) => {
+                    clearTimeout(timer);
+                    resolve(result);
+                })
+                .catch((error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                });
+        });
     }
 
     private async getEmbeddingService(): Promise<EmbeddingService> {
@@ -145,11 +282,11 @@ export class McpServer {
                 let sessionId = req.headers['mcp-session-id'] as string;
                 if (!sessionId && method === 'initialize') {
                     sessionId = randomUUID();
-                    this.sessions.set(sessionId, true);
                 }
 
-                // Set session header
+                // Touch session to track activity
                 if (sessionId) {
+                    this.touchSession(sessionId);
                     res.setHeader('mcp-session-id', sessionId);
                 }
 
@@ -429,11 +566,15 @@ export class McpServer {
 
         // Get the embedding service
         const embeddingService = await this.getEmbeddingService();
-        
-        // Generate embedding for query
-        const result = await embeddingService.generateEmbedding(queryText);
+
+        // Generate embedding for query with timeout
+        const result = await this.withTimeout(
+            embeddingService.generateEmbedding(queryText),
+            EMBEDDING_TIMEOUT_MS,
+            'Embedding generation'
+        );
         const queryEmbedding = result.embedding;
-        
+
         // Track tokens and cost for query (only for OpenAI)
         if (this.embeddingProvider === 'openai' && this.onCostUpdate) {
             const tokens = result.tokens;
@@ -441,32 +582,27 @@ export class McpServer {
             this.onCostUpdate(tokens, cost);
         }
 
-        // Query database
-        const db = new Database(this.dbPath);
-        sqliteVec.load(db);
+        // Query database using cached connection
+        const db = this.getDatabase();
 
-        try {
-            const stmt = db.prepare(`
-                SELECT
-                    chunk_id,
-                    distance,
-                    content,
-                    url,
-                    section,
-                    heading_hierarchy,
-                    chunk_index,
-                    total_chunks
-                FROM vec_items
-                WHERE embedding MATCH ?
-                ORDER BY distance
-                LIMIT ?
-            `);
+        const stmt = db.prepare(`
+            SELECT
+                chunk_id,
+                distance,
+                content,
+                url,
+                section,
+                heading_hierarchy,
+                chunk_index,
+                total_chunks
+            FROM vec_items
+            WHERE embedding MATCH ?
+            ORDER BY distance
+            LIMIT ?
+        `);
 
-            const rows = stmt.all(new Float32Array(queryEmbedding), limit) as QueryResult[];
-            return rows;
-        } finally {
-            db.close();
-        }
+        const rows = stmt.all(new Float32Array(queryEmbedding), limit) as QueryResult[];
+        return rows;
     }
 
     private getChunksForFile(filePath: string, chunkIndices?: number[]): ChunkResult[] {
@@ -474,52 +610,52 @@ export class McpServer {
             throw new Error('Database not configured');
         }
 
-        const db = new Database(this.dbPath);
-        sqliteVec.load(db);
+        // Use cached database connection
+        const db = this.getDatabase();
 
-        try {
-            let rows: ChunkResult[];
-            
-            if (chunkIndices && chunkIndices.length > 0) {
-                // Get specific chunks by index
-                const placeholders = chunkIndices.map(() => '?').join(',');
-                const stmt = db.prepare(`
-                    SELECT
-                        chunk_id,
-                        content,
-                        section,
-                        heading_hierarchy,
-                        chunk_index,
-                        total_chunks
-                    FROM vec_items
-                    WHERE url = ? AND chunk_index IN (${placeholders})
-                    ORDER BY chunk_index
-                `);
-                rows = stmt.all(filePath, ...chunkIndices) as ChunkResult[];
-            } else {
-                // Get all chunks for the file
-                const stmt = db.prepare(`
-                    SELECT
-                        chunk_id,
-                        content,
-                        section,
-                        heading_hierarchy,
-                        chunk_index,
-                        total_chunks
-                    FROM vec_items
-                    WHERE url = ?
-                    ORDER BY chunk_index
-                `);
-                rows = stmt.all(filePath) as ChunkResult[];
-            }
-            
-            return rows;
-        } finally {
-            db.close();
+        let rows: ChunkResult[];
+
+        if (chunkIndices && chunkIndices.length > 0) {
+            // Get specific chunks by index
+            const placeholders = chunkIndices.map(() => '?').join(',');
+            const stmt = db.prepare(`
+                SELECT
+                    chunk_id,
+                    content,
+                    section,
+                    heading_hierarchy,
+                    chunk_index,
+                    total_chunks
+                FROM vec_items
+                WHERE url = ? AND chunk_index IN (${placeholders})
+                ORDER BY chunk_index
+            `);
+            rows = stmt.all(filePath, ...chunkIndices) as ChunkResult[];
+        } else {
+            // Get all chunks for the file
+            const stmt = db.prepare(`
+                SELECT
+                    chunk_id,
+                    content,
+                    section,
+                    heading_hierarchy,
+                    chunk_index,
+                    total_chunks
+                FROM vec_items
+                WHERE url = ?
+                ORDER BY chunk_index
+            `);
+            rows = stmt.all(filePath) as ChunkResult[];
         }
+
+        return rows;
     }
 
     setDatabase(dbPath: string | null) {
+        // Close existing connection if database path changes
+        if (this.dbPath !== dbPath) {
+            this.closeDatabase();
+        }
         this.dbPath = dbPath;
         console.log(`MCP Server: Database set to ${dbPath}`);
     }
@@ -566,12 +702,21 @@ export class McpServer {
     }
 
     async stop(): Promise<void> {
+        // Stop session cleanup interval
+        this.stopSessionCleanup();
+
         // Terminate embedding service worker if it exists
         if (this.embeddingService) {
             await this.embeddingService.terminate();
             this.embeddingService = null;
         }
-        
+
+        // Close database connection
+        this.closeDatabase();
+
+        // Clear sessions
+        this.sessions.clear();
+
         return new Promise((resolve) => {
             if (this.server) {
                 this.server.close(() => {
