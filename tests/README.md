@@ -1,6 +1,6 @@
 # Test Suite
 
-This directory contains comprehensive integration tests for the Docs4ai multi-profile functionality.
+This directory contains unit, integration, and smoke tests for the Docs4ai core capabilities.
 
 ## Overview
 
@@ -10,6 +10,10 @@ The test suite validates:
 - **MCP Server**: Starting independent MCP servers on different ports for each profile
 - **Querying**: Verifying that each MCP server can query its own profile's data
 - **Independence**: Ensuring profiles operate independently without interference
+- **Sync Engine**: File discovery, change events, rename/delete handling, and extension filters
+- **Content Processing**: Chunking behavior and HTML sanitization
+- **Embeddings**: Provider normalization, invalid API key handling, and local startup failures (mocked)
+- **Database**: Persistence, metadata dimension handling, and legacy fallbacks
 
 ## Running Tests
 
@@ -50,6 +54,39 @@ Main integration test suite that:
 4. Verifies queries return profile-specific results
 5. Tests profile independence
 
+### `syncer.test.ts`
+Folder watcher tests that cover:
+- Recursive file discovery and extension filtering
+- Add/change/delete events
+- Rename handling via add/remove events
+
+### `processor.test.ts`
+ContentProcessor coverage for:
+- Chunking long content with hierarchy
+- HTML sanitization and markdown conversion
+
+### `embeddings.test.ts`
+Embedding behavior with mocks:
+- Provider normalization
+- OpenAI invalid key handling
+- Local model startup failure path
+
+### `database.test.ts`
+Database safety checks:
+- Persistence across reopen
+- Metadata-based dimension reuse
+- Legacy dimension fallback behavior
+
+### `mcp-server.test.ts`
+MCP server coverage for:
+- Query responses and metadata
+- JSON-RPC error handling
+- Missing database behavior
+
+### `profile-smoke.test.ts`
+Profile lifecycle smoke test:
+- Sync, query, restart, and provider switch with mocked embeddings
+
 ### `helpers.ts`
 Utility functions for:
 - Creating temporary directories and files
@@ -60,7 +97,7 @@ Utility functions for:
 
 ### `setup.ts`
 Test setup and teardown:
-- Creates test directories
+- Creates per-worker test directories
 - Cleans up after tests complete
 
 ## Test Data
@@ -93,6 +130,10 @@ Test setup and teardown:
 - Vector embeddings are generated correctly
 - Queries return relevant results from the correct profile
 
+✅ **Sync Engine Behavior**
+- Watcher events are triggered for add/change/delete/rename
+- File extensions and recursion settings are honored
+
 ## Troubleshooting
 
 ### Tests Fail with Port Errors
@@ -106,7 +147,7 @@ lsof -i :3333-3433
 If you see SQLite lock errors, ensure all previous test runs completed:
 ```bash
 # Clean up test databases
-rm -rf tests/test-dbs/*
+rm -rf tests/test-dbs-* tests/temp-*
 ```
 
 ### API Key Errors

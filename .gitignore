@@ -28,3 +28,8 @@ coverage/
 
 # Model cache
 models/
+
+# llama-server binaries (download with scripts/download-llama-server.sh)
+bin/darwin/
+bin/linux/
+bin/win32/

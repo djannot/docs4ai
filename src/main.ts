@@ -8,15 +8,14 @@ import { ContentProcessor } from './processor';
 import { EmbeddingService, InvalidApiKeyError, EmbeddingProvider, getEmbeddingDimension, LOCAL_MODELS } from './embeddings';
 import { McpServer } from './mcp-server';
 import { initI18n, t, changeLanguage, getCurrentLanguage, getAvailableLanguages, isInitialized } from './i18n';
+import { LLMChatService, LLMProvider, ChatMessage, MCP_TOOLS, executeMcpToolCall, ToolCall } from './llm-chat';
 
 // Helper to migrate old provider values to current ones
 function migrateEmbeddingProvider(provider: string | undefined): EmbeddingProvider {
-    if (!provider || provider === 'local') {
-        return 'local-minilm';
-    }
-    // Migrate old 'local-qwen' to 'local-e5' (Qwen was not compatible with transformers.js)
-    if (provider === 'local-qwen') {
-        return 'local-e5';
+    // All local providers now map to 'local' (Qwen3 via llama-server)
+    if (!provider || provider === 'local' || provider === 'local-minilm' ||
+        provider === 'local-e5' || provider === 'local' || provider === 'local-qwen') {
+        return 'local';
     }
     return provider as EmbeddingProvider;
 }
@@ -31,7 +30,11 @@ interface ProfileSettings {
     recursive: boolean;
     mcpServerEnabled: boolean;
     mcpServerPort: number;
-    embeddingProvider: EmbeddingProvider;  // 'local-minilm', 'local-e5', 'local-e5-large', or 'openai'
+    embeddingProvider: EmbeddingProvider;  // 'local' or 'openai'
+    embeddingContextLength?: number;  // Context length for local embedding model (default: 8192)
+    llmContextLength?: number;  // Context length for local LLM chat model (default: 8192)
+    llmChatApiKey?: string;  // OpenAI API key for LLM chat (separate from embeddings)
+    llmChatModel?: string;  // OpenAI model for LLM chat (default: 'gpt-4o-mini')
 }
 
 interface AppSettings {
@@ -47,6 +50,8 @@ interface ProfileState {
     processor: ContentProcessor | null;
     embeddingService: EmbeddingService | null;
     mcpServer: McpServer | null;
+    llmChatService: LLMChatService | null;
+    chatActive: boolean;
     status: 'idle' | 'syncing' | 'processing';
     processedCount: number;
     totalChunks: number;
@@ -425,7 +430,7 @@ function setupIpcHandlers() {
                 recursive: true,
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
-                embeddingProvider: 'local-e5-large'  // Default to local embeddings
+                embeddingProvider: 'local'  // Default to local embeddings
             };
             
             console.log('[IPC] Created profile object:', newProfile);
@@ -497,15 +502,16 @@ function setupIpcHandlers() {
         store.store = appSettings;
         
         // Update embedding service if provider or API key changed
+        // Note: embeddingContextLength changes don't trigger reload - the new value will be used next time sync starts
         const state = profileStates.get(profileId);
         if (state) {
             const profile = appSettings.profiles![profileIndex];
             if (updates.embeddingProvider !== undefined || updates.openAIApiKey !== undefined) {
                 // Recreate embedding service with new settings
                 if (profile.embeddingProvider === 'openai' && profile.openAIApiKey) {
-                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey);
+                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey, profile.embeddingContextLength);
                 } else {
-                    state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider));
+                    state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider), undefined, profile.embeddingContextLength);
                 }
             }
             
@@ -592,6 +598,8 @@ function setupIpcHandlers() {
                 processor: null,
                 embeddingService: null,
                 mcpServer: null,
+                llmChatService: null,
+                chatActive: false,
                 status: 'idle',
                 processedCount: 0,
                 totalChunks: 0,
@@ -610,7 +618,7 @@ function setupIpcHandlers() {
             }
 
             // Create and start new server
-            state.mcpServer = new McpServer(port);
+            state.mcpServer = new McpServer(port, profile.embeddingContextLength);
             state.mcpServer.setDatabase(dbPath);
             state.mcpServer.setApiKey(apiKey);
             state.mcpServer.setEmbeddingProvider(embeddingProvider);
@@ -796,7 +804,7 @@ function setupIpcHandlers() {
             totalChunks,
             totalTokens,
             totalCost,
-            embeddingProvider: profile?.embeddingProvider || 'local-e5-large'
+            embeddingProvider: profile?.embeddingProvider || 'local'
         };
     });
 
@@ -1002,14 +1010,289 @@ function setupIpcHandlers() {
             appSettings.language = locale;
             store.store = appSettings;
             updateTray(); // Update tray menu with new language
-            
+
             // Notify renderer that language changed
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('language-changed', locale);
             }
-            
+
             return { success: true, language: locale };
         } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ==================== Chat IPC Handlers ====================
+
+    // Start chat session for a profile (auto-starts MCP server if needed)
+    ipcMain.handle('start-chat', async (_event: IpcMainInvokeEvent, profileId: string, llmProvider: LLMProvider, openaiApiKey?: string, openaiModel?: string) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+
+        if (!profile) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        if (!profile.databasePath) {
+            return { success: false, error: 'Database not configured for this profile' };
+        }
+
+        if (llmProvider === 'openai' && !openaiApiKey) {
+            return { success: false, error: 'OpenAI API key is required for OpenAI LLM provider' };
+        }
+
+        try {
+            // Get or create profile state
+            let state = profileStates.get(profileId);
+            if (!state) {
+                const persistedCosts = appSettings.profileCosts?.[profileId];
+                state = {
+                    syncer: null,
+                    database: null,
+                    processor: null,
+                    embeddingService: null,
+                    mcpServer: null,
+                    llmChatService: null,
+                    chatActive: false,
+                    status: 'idle',
+                    processedCount: 0,
+                    totalChunks: 0,
+                    totalTokens: persistedCosts?.totalTokens || 0,
+                    totalCost: persistedCosts?.totalCost || 0,
+                    totalFilesToSync: 0,
+                    filesProcessed: 0
+                };
+                profileStates.set(profileId, state);
+            }
+
+            // Auto-start MCP server if not running
+            if (!state.mcpServer?.isRunning()) {
+                console.log(`[Chat] Auto-starting MCP server for profile ${profile.name}`);
+                const port = profile.mcpServerPort || 3333;
+                const embeddingProvider = migrateEmbeddingProvider(profile.embeddingProvider);
+
+                // Check if port is already in use by another profile
+                const portOwner = portUsage.get(port);
+                if (portOwner && portOwner !== profileId) {
+                    return { success: false, error: `Port ${port} is already in use by another profile` };
+                }
+
+                // Create and start MCP server
+                state.mcpServer = new McpServer(port, profile.embeddingContextLength);
+                state.mcpServer.setDatabase(profile.databasePath);
+                state.mcpServer.setApiKey(profile.openAIApiKey || null);
+                state.mcpServer.setEmbeddingProvider(embeddingProvider);
+
+                // Track costs for MCP queries
+                state.mcpServer.setOnCostUpdate((tokens, cost) => {
+                    if (state) {
+                        state.totalTokens += tokens;
+                        state.totalCost += cost;
+
+                        const appSettings = store.store;
+                        if (!appSettings.profileCosts) {
+                            appSettings.profileCosts = {};
+                        }
+                        appSettings.profileCosts[profileId] = {
+                            totalTokens: state.totalTokens,
+                            totalCost: state.totalCost
+                        };
+                        store.store = appSettings;
+                        sendStats(profileId);
+                    }
+                });
+
+                await state.mcpServer.start();
+                portUsage.set(port, profileId);
+
+                // Update profile settings
+                profile.mcpServerEnabled = true;
+                store.store = appSettings;
+
+                console.log(`[Chat] MCP server started on port ${port}`);
+            }
+
+            // Stop existing LLM service if provider changed
+            if (state.llmChatService && state.llmChatService.getProvider() !== llmProvider) {
+                await state.llmChatService.terminate();
+                state.llmChatService = null;
+            }
+
+            // Create LLM chat service
+            if (!state.llmChatService) {
+                state.llmChatService = new LLMChatService(llmProvider, openaiApiKey, openaiModel, profile.llmContextLength);
+
+                // Set up download progress callback for local model
+                if (llmProvider === 'local-qwen3') {
+                    state.llmChatService.setDownloadProgressCallback((progress) => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('llm-download-progress', {
+                                profileId,
+                                ...progress
+                            });
+                        }
+                    });
+                }
+            }
+
+            // Initialize the LLM service (downloads model if needed)
+            await state.llmChatService.initialize();
+            state.chatActive = true;
+
+            return {
+                success: true,
+                mcpPort: state.mcpServer?.getPort(),
+                llmProvider
+            };
+
+        } catch (error: any) {
+            console.error('[Chat] Error starting chat:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Stop chat session
+    ipcMain.handle('stop-chat', async (_event: IpcMainInvokeEvent, profileId: string) => {
+        try {
+            const state = profileStates.get(profileId);
+            if (state) {
+                state.chatActive = false;
+
+                // Terminate LLM service
+                if (state.llmChatService) {
+                    await state.llmChatService.terminate();
+                    state.llmChatService = null;
+                }
+            }
+            return { success: true };
+        } catch (error: any) {
+            console.error('[Chat] Error stopping chat:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // Get chat status
+    ipcMain.handle('get-chat-status', (_event: IpcMainInvokeEvent, profileId: string) => {
+        const state = profileStates.get(profileId);
+        return {
+            active: state?.chatActive ?? false,
+            mcpRunning: state?.mcpServer?.isRunning() ?? false,
+            mcpPort: state?.mcpServer?.getPort() ?? 3333,
+            llmProvider: state?.llmChatService?.getProvider() ?? null
+        };
+    });
+
+    // Send chat message and get response
+    ipcMain.handle('send-chat-message', async (_event: IpcMainInvokeEvent, options: {
+        profileId: string;
+        messages: ChatMessage[];
+        llmProvider: LLMProvider;
+        openaiApiKey?: string;
+        openaiModel?: string;
+        enableTools?: boolean;
+        temperature?: number;
+        maxTokens?: number;
+    }) => {
+        const { profileId, messages, enableTools = true, temperature, maxTokens } = options;
+
+        const state = profileStates.get(profileId);
+        if (!state || !state.chatActive || !state.llmChatService) {
+            return { success: false, error: 'Chat session not active. Please start chat first.' };
+        }
+
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        if (!profile) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        try {
+            const mcpPort = state.mcpServer?.getPort() || profile.mcpServerPort || 3333;
+
+            // Build chat options
+            const chatOptions: any = {
+                messages,
+                temperature,
+                maxTokens
+            };
+
+            // Add tools if enabled and MCP server is running
+            if (enableTools && state.mcpServer?.isRunning()) {
+                chatOptions.tools = MCP_TOOLS;
+            }
+
+            // Get initial response
+            let result = await state.llmChatService.chat(chatOptions);
+
+            // Handle tool calls (function calling loop)
+            const maxToolCalls = 5; // Prevent infinite loops
+            let toolCallCount = 0;
+            const conversationMessages = [...messages];
+            const executedToolCalls: Array<{ name: string; arguments: any; response: any }> = [];
+
+            while (result.finishReason === 'tool_calls' && result.message.tool_calls && toolCallCount < maxToolCalls) {
+                toolCallCount++;
+                console.log(`[Chat] Processing tool calls (${toolCallCount}/${maxToolCalls})`);
+
+                // Add assistant message with tool calls
+                conversationMessages.push(result.message);
+
+                // Execute each tool call
+                for (const toolCall of result.message.tool_calls) {
+                    console.log(`[Chat] Executing tool: ${toolCall.function.name}`);
+
+                    const toolResult = await executeMcpToolCall(toolCall, mcpPort);
+
+                    // Store executed tool call for UI display
+                    let parsedArgs;
+                    try {
+                        parsedArgs = JSON.parse(toolCall.function.arguments);
+                    } catch {
+                        parsedArgs = toolCall.function.arguments;
+                    }
+                    executedToolCalls.push({
+                        name: toolCall.function.name,
+                        arguments: parsedArgs,
+                        response: toolResult
+                    });
+
+                    // Add tool result to conversation
+                    conversationMessages.push({
+                        role: 'tool',
+                        content: toolResult,
+                        tool_call_id: toolCall.id,
+                        name: toolCall.function.name
+                    });
+                }
+
+                // Get next response with tool results
+                result = await state.llmChatService.chat({
+                    messages: conversationMessages,
+                    tools: chatOptions.tools,
+                    temperature,
+                    maxTokens
+                });
+            }
+
+            return {
+                success: true,
+                message: result.message,
+                finishReason: result.finishReason,
+                usage: result.usage,
+                toolCalls: executedToolCalls.length > 0 ? executedToolCalls : undefined
+            };
+
+        } catch (error: any) {
+            console.error('[Chat] Error sending message:', error);
+
+            // Send error to renderer
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('chat-error', {
+                    profileId,
+                    error: error.message
+                });
+            }
+
             return { success: false, error: error.message };
         }
     });
@@ -1054,6 +1337,8 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 processor: null,
                 embeddingService: null,
                 mcpServer: null,
+                llmChatService: null,
+                chatActive: false,
                 status: 'idle',
                 processedCount: 0,
                 totalChunks: 0,
@@ -1086,7 +1371,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
 
         // Initialize embedding service
         if (embeddingProvider === 'openai') {
-            state.embeddingService = new EmbeddingService('openai', openAIApiKey);
+            state.embeddingService = new EmbeddingService('openai', openAIApiKey, profile.embeddingContextLength);
             
             // Validate API key before starting sync
             console.log(`[${profile.name}] Validating OpenAI API key...`);
@@ -1105,7 +1390,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             // Use local embeddings
             const modelConfig = LOCAL_MODELS[embeddingProvider];
             console.log(`[${profile.name}] Using local embedding model: ${modelConfig?.name || embeddingProvider}...`);
-            state.embeddingService = new EmbeddingService(embeddingProvider);
+            state.embeddingService = new EmbeddingService(embeddingProvider, undefined, profile.embeddingContextLength);
             
             // Set up download progress callback to notify UI
             state.embeddingService.setDownloadProgressCallback((progress) => {
@@ -1467,7 +1752,7 @@ function sendStats(profileId?: string) {
             totalChunks,
             totalTokens,
             totalCost,
-            embeddingProvider: profile?.embeddingProvider || 'local-e5-large',
+            embeddingProvider: profile?.embeddingProvider || 'local',
             syncProgress: state ? {
                 filesProcessed: state.filesProcessed || 0,
                 totalFiles: state.totalFilesToSync || 0
@@ -1602,6 +1887,8 @@ app.whenReady().then(async () => {
                     processor: null,
                     embeddingService: null,
                     mcpServer: null,
+                    llmChatService: null,
+                    chatActive: false,
                     status: 'idle',
                     processedCount: 0,
                     totalChunks: 0,
@@ -1651,8 +1938,8 @@ app.whenReady().then(async () => {
 app.on('before-quit', async () => {
     isQuitting = true;
     console.log('Quitting app...');
-    
-    // Stop all syncers, close all databases, and stop all MCP servers
+
+    // Stop all syncers, close all databases, stop all MCP servers, and terminate LLM services
     for (const [profileId, state] of profileStates.entries()) {
         syncCancelled.set(profileId, true);
         state.syncer?.stop();
@@ -1662,11 +1949,14 @@ app.on('before-quit', async () => {
             await state.mcpServer.stop();
             portUsage.delete(port);
         }
+        if (state.llmChatService) {
+            await state.llmChatService.terminate();
+        }
     }
     profileStates.clear();
     syncCancelled.clear();
     portUsage.clear();
-    
+
     tray?.destroy();
     console.log('Cleanup complete');
 });

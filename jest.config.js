@@ -12,6 +12,9 @@ module.exports = {
     '!src/index.html',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
+  moduleNameMapper: {
+    '^electron$': '<rootDir>/tests/mocks/electron.ts'
+  },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 60000, // 60 seconds for integration tests
 };

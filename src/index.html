@@ -908,7 +908,7 @@
         <!-- MCP Server Card (shared across profiles) -->
         <div class="card" style="margin-top: 16px;">
             <div class="card-title">🌐 MCP Server</div>
-            
+
             <div class="input-group">
                 <div class="input-row">
                     <label for="mcpPort" style="margin: 0; white-space: nowrap;">Port:</label>
@@ -916,12 +916,60 @@
                     <button class="btn-secondary" id="mcpToggleBtn" onclick="toggleMcpServer()">Start Server</button>
                 </div>
             </div>
-            
+
             <div id="mcpStatus" class="info" style="margin-top: 8px;">
                 Server stopped
             </div>
-            
+
             <button class="btn-secondary" id="mcpConfigureBtn" style="display: none; width: 100%; margin-top: 8px;" onclick="openMcpConfig()">Configure Clients</button>
+        </div>
+
+        <!-- Chat with LLM Card -->
+        <div class="card" style="margin-top: 16px;">
+            <div class="card-title">💬 <span data-i18n="chat.title">Chat with Documents</span></div>
+
+            <div class="input-group">
+                <label for="llmProvider" data-i18n="chat.llmProvider">LLM Provider:</label>
+                <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
+                    <option value="openai" data-i18n="chat.openaiOption">OpenAI</option>
+                    <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local Qwen3 (1.7B, ~1GB)</option>
+                </select>
+                <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
+                    Uses OpenAI API for chat. Requires API key.
+                </div>
+            </div>
+
+            <div class="input-group" id="chatApiKeyGroup">
+                <label for="chatApiKey" data-i18n="chat.apiKeyLabel">OpenAI API Key:</label>
+                <input type="password" id="chatApiKey" placeholder="sk-...">
+                <div class="info" data-i18n="chat.apiKeySameInfo">Same key used for embeddings can be used here.</div>
+            </div>
+
+            <div class="input-group" id="chatModelGroup" style="display: block;">
+                <label for="chatModel" data-i18n="chat.modelLabel">OpenAI Model:</label>
+                <input type="text" id="chatModel" value="gpt-5-mini" placeholder="gpt-5-mini" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                <div class="info" data-i18n="chat.modelInfo">Enter the OpenAI model to use for chat.</div>
+            </div>
+
+            <div class="input-group" id="llmContextLengthGroup" style="display: none;">
+                <label for="llmContextLength-chat" data-i18n="chat.llmContextLength">LLM Context Length:</label>
+                <input type="number" id="llmContextLength-chat" value="8192" min="512" max="32768" step="512" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                <div class="info" data-i18n="chat.llmContextLengthInfo">Maximum context length for the local LLM model. Higher values use more memory.</div>
+            </div>
+
+            <div class="input-group" id="llmDownloadProgress" style="display: none;">
+                <div class="download-progress-info" style="font-size: 14px; color: #1565c0; margin-bottom: 8px;">
+                    <span id="llmDownloadFile" data-i18n="chat.downloadingModel">Downloading model...</span>
+                </div>
+                <div class="download-progress-bar-container" style="height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">
+                    <div class="download-progress-bar" id="llmDownloadBar" style="height: 100%; background: linear-gradient(90deg, #42a5f5, #7e57c2); border-radius: 4px; transition: width 0.3s ease; width: 0%"></div>
+                </div>
+                <div class="download-progress-text" id="llmDownloadText" style="font-size: 12px; color: #5e35b1; text-align: center;">0%</div>
+            </div>
+
+            <button class="btn-primary" id="openChatBtn" onclick="openChatModal()" style="width: 100%; margin-top: 8px;" data-i18n="chat.openChat">
+                Open Chat
+            </button>
         </div>
     </div>
 
@@ -1033,6 +1081,268 @@
         </div>
     </div>
 
+    <!-- Chat Modal -->
+    <div class="modal-overlay" id="chatModal">
+        <div class="modal" style="max-width: 800px; height: 85vh;">
+            <div class="modal-header" style="border-bottom: 1px solid #e5e5ea;">
+                <h2>💬 <span data-i18n="chat.title">Chat with Documents</span></h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="chatStatusIndicator" style="font-size: 12px; color: #86868b;" data-i18n="chat.notConnected">Not connected</span>
+                    <button class="modal-close" onclick="closeChatModal()">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; padding: 0; flex: 1; overflow: hidden;">
+                <!-- Chat Messages -->
+                <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px; background: #f5f5f7;">
+                    <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;" data-i18n="chat.welcomeTitle">Chat with your documents</h3>
+                        <p data-i18n="chat.welcomeDescription">Ask questions about your synced documents. The AI will search and reference them automatically.</p>
+                    </div>
+                </div>
+
+                <!-- Chat Input -->
+                <div style="border-top: 1px solid #e5e5ea; padding: 12px 16px; background: white;">
+                    <div style="display: flex; gap: 8px; align-items: flex-end;">
+                        <textarea id="chatInput" data-i18n-placeholder="chat.inputPlaceholder" placeholder="Ask a question about your documents..."
+                            style="flex: 1; min-height: 44px; max-height: 120px; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; resize: none; font-family: inherit;"
+                            onkeydown="handleChatKeydown(event)"></textarea>
+                        <button class="btn-primary" id="chatSendBtn" onclick="sendChatMessage()" style="height: 44px; padding: 0 20px;" data-i18n="chat.send">
+                            Send
+                        </button>
+                    </div>
+                    <div id="chatError" style="display: none; color: #ff3b30; font-size: 12px; margin-top: 8px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Chat Message Styles */
+        .chat-message {
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-message.user {
+            align-items: flex-end;
+        }
+
+        .chat-message.assistant {
+            align-items: flex-start;
+        }
+
+        .chat-message-content {
+            max-width: 85%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .chat-message.user .chat-message-content {
+            background: #0071e3;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-message.assistant .chat-message-content {
+            background: white;
+            color: #1d1d1f;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .chat-message-role {
+            font-size: 11px;
+            color: #86868b;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .chat-typing {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 14px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .chat-typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #86868b;
+            border-radius: 50%;
+            animation: chatTyping 1.4s infinite;
+        }
+
+        .chat-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .chat-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes chatTyping {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        .chat-tool-calls {
+            margin: 8px 0;
+        }
+
+        .chat-tool-call {
+            background: #f0f7ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            font-size: 12px;
+            color: #0066cc;
+        }
+
+        .chat-tool-call-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chat-tool-call-header .tool-icon {
+            font-size: 14px;
+        }
+
+        .chat-tool-call-header .tool-name {
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .chat-tool-call-header .tool-toggle {
+            background: rgba(0, 102, 204, 0.1);
+            border: 1px solid rgba(0, 102, 204, 0.3);
+            color: #0066cc;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .chat-tool-call-header .tool-toggle:hover {
+            background: rgba(0, 102, 204, 0.2);
+        }
+
+        .chat-tool-call-details {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0, 102, 204, 0.2);
+        }
+
+        .chat-tool-call-args,
+        .chat-tool-call-response {
+            margin-bottom: 8px;
+        }
+
+        .chat-tool-call-args strong,
+        .chat-tool-call-response strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #004c99;
+        }
+
+        .chat-tool-call-args pre,
+        .chat-tool-call-response pre {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            background: rgba(0, 0, 0, 0.05);
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 0;
+            font-size: 11px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Markdown styles for chat messages */
+        .chat-message-content p {
+            margin: 0 0 8px 0;
+        }
+
+        .chat-message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .chat-message-content .md-link {
+            color: #007aff;
+            text-decoration: none;
+        }
+
+        .chat-message-content .md-link:hover {
+            text-decoration: underline;
+        }
+
+        .chat-message-content .md-code-block {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 13px;
+        }
+
+        .chat-message-content .md-code-block code {
+            background: none;
+            padding: 0;
+        }
+
+        .chat-message-content .md-inline-code {
+            background: rgba(0, 0, 0, 0.06);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.9em;
+        }
+
+        .chat-message-content .md-header {
+            margin: 12px 0 8px 0;
+            font-weight: 600;
+        }
+
+        .chat-message-content h2.md-header {
+            font-size: 1.3em;
+        }
+
+        .chat-message-content h3.md-header {
+            font-size: 1.15em;
+        }
+
+        .chat-message-content h4.md-header {
+            font-size: 1em;
+        }
+
+        .chat-message-content .md-list {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .chat-message-content .md-list-item {
+            margin: 4px 0;
+        }
+
+        .chat-message-content strong {
+            font-weight: 600;
+        }
+
+        .chat-message-content em {
+            font-style: italic;
+        }
+    </style>
+
     <script>
         let profiles = [];
         let activeProfileId = null;
@@ -1058,6 +1368,7 @@
             
             renderTabs();
             await renderActiveProfile();
+            syncLlmChatSettingsFromProfile();
             
             // Get initial stats for all profiles
             for (const profile of profiles) {
@@ -1271,6 +1582,7 @@
             await window.api.setActiveProfile(profileId);
             renderTabs();
             await renderActiveProfile();
+            syncLlmChatSettingsFromProfile();
         }
 
         function populateExtensionCheckboxes(profileId, selectedExtensions) {
@@ -1448,19 +1760,23 @@
                         <div class="input-group">
                             <label for="embeddingProvider-${profile.id}">${t('ui.embeddingProvider')}:</label>
                             <select id="embeddingProvider-${profile.id}" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
-                                <option value="local-minilm" ${profile.embeddingProvider === 'local-minilm' ? 'selected' : ''}>${t('ui.localMinilm')} (${t('ui.free')})</option>
-                                <option value="local-e5" ${profile.embeddingProvider === 'local-e5' || profile.embeddingProvider === 'local-qwen' ? 'selected' : ''}>${t('ui.localE5')} (${t('ui.free')})</option>
-                                <option value="local-e5-large" ${(profile.embeddingProvider || 'local-e5-large') === 'local-e5-large' ? 'selected' : ''}>${t('ui.localE5Large')} (${t('ui.free')})</option>
+                                <option value="local" ${(profile.embeddingProvider || 'local') !== 'openai' ? 'selected' : ''}>${t('ui.localQwen3')} (${t('ui.free')})</option>
                                 <option value="openai" ${profile.embeddingProvider === 'openai' ? 'selected' : ''}>${t('ui.openaiEmbeddings')} (${t('ui.paid')})</option>
                             </select>
                             <div class="model-description" id="modelDescription-${profile.id}" style="margin-top: 6px; font-size: 12px; color: #666;">
-                                ${getModelDescription(profile.embeddingProvider || 'local-e5-large')}
+                                ${getModelDescription(profile.embeddingProvider || 'local')}
                             </div>
                         </div>
                         
                         <div class="input-group" id="apiKeyGroup-${profile.id}" style="display: ${profile.embeddingProvider === 'openai' ? 'block' : 'none'};">
                             <label for="apiKey-${profile.id}">${t('ui.apiKey')}:</label>
                             <input type="password" id="apiKey-${profile.id}" value="${escapeHtml(profile.openAIApiKey || '')}" placeholder="sk-...">
+                        </div>
+
+                        <div class="input-group" id="embeddingContextLengthGroup-${profile.id}" style="display: ${(profile.embeddingProvider || 'local') !== 'openai' ? 'block' : 'none'};">
+                            <label for="embeddingContextLength-${profile.id}">${t('ui.embeddingContextLength')}:</label>
+                            <input type="number" id="embeddingContextLength-${profile.id}" value="${profile.embeddingContextLength || 8192}" min="512" max="32768" step="512" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                            <div style="margin-top: 6px; font-size: 12px; color: #666;">${t('ui.embeddingContextLengthInfo')}</div>
                         </div>
 
                         <div class="info" id="embeddingInfo-${profile.id}">${profile.embeddingProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo')}</div>
@@ -1588,11 +1904,17 @@
                 recursiveInput.addEventListener('change', () => saveProfileSettings(profileId));
             }
             
+            // Add listener for embedding context length
+            const embeddingContextLengthInput = document.getElementById(`embeddingContextLength-${profileId}`);
+            if (embeddingContextLengthInput) {
+                embeddingContextLengthInput.addEventListener('change', () => saveProfileSettings(profileId));
+            }
+            
             if (embeddingProviderSelect) {
                 embeddingProviderSelect.addEventListener('change', async (e) => {
                     const newProvider = embeddingProviderSelect.value;
                     const profile = profiles.find(p => p.id === profileId);
-                    const oldProvider = profile?.embeddingProvider || 'local-e5-large';
+                    const oldProvider = profile?.embeddingProvider || 'local';
                     
                     // If provider actually changed, warn user about database reset
                     if (oldProvider !== newProvider) {
@@ -1648,6 +1970,7 @@
                     }
                     
                     const apiKeyGroup = document.getElementById(`apiKeyGroup-${profileId}`);
+                    const embeddingContextLengthGroup = document.getElementById(`embeddingContextLengthGroup-${profileId}`);
                     const embeddingInfo = document.getElementById(`embeddingInfo-${profileId}`);
                     const tokensRow = document.getElementById(`tokensRow-${profileId}`);
                     const costRow = document.getElementById(`costRow-${profileId}`);
@@ -1655,6 +1978,9 @@
                     
                     if (apiKeyGroup) {
                         apiKeyGroup.style.display = newProvider === 'openai' ? 'block' : 'none';
+                    }
+                    if (embeddingContextLengthGroup) {
+                        embeddingContextLengthGroup.style.display = newProvider === 'openai' ? 'none' : 'block';
                     }
                     if (embeddingInfo) {
                         embeddingInfo.textContent = newProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo');
@@ -1751,7 +2077,8 @@
             const newDatabasePath = (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent;
             const newApiKey = document.getElementById(`apiKey-${profileId}`).value;
             const newRecursive = document.getElementById(`recursive-${profileId}`).checked;
-            const newEmbeddingProvider = embeddingProviderEl?.value || 'local-e5-large';
+            const newEmbeddingProvider = embeddingProviderEl?.value || 'local';
+            const newEmbeddingContextLength = parseInt(document.getElementById(`embeddingContextLength-${profileId}`)?.value) || 8192;
 
             // Only send fields that actually changed to avoid triggering unnecessary worker restarts
             const updates = {};
@@ -1762,6 +2089,7 @@
             if (selectedExtensions !== profile.fileExtensions) updates.fileExtensions = selectedExtensions;
             if (newRecursive !== profile.recursive) updates.recursive = newRecursive;
             if (newEmbeddingProvider !== profile.embeddingProvider) updates.embeddingProvider = newEmbeddingProvider;
+            if (newEmbeddingContextLength !== profile.embeddingContextLength) updates.embeddingContextLength = newEmbeddingContextLength;
 
             // Only call API if there are actual changes
             if (Object.keys(updates).length > 0) {
@@ -1927,7 +2255,7 @@
         function updateApiKeyWarning(profileId) {
             if (profileId !== activeProfileId) return;
             
-            const embeddingProvider = document.getElementById(`embeddingProvider-${profileId}`)?.value || 'local-e5-large';
+            const embeddingProvider = document.getElementById(`embeddingProvider-${profileId}`)?.value || 'local';
             const apiKey = document.getElementById(`apiKey-${profileId}`)?.value || '';
             const hasApiKey = apiKey && apiKey.trim().length > 0;
             const warning = document.getElementById(`apiKeyWarning-${profileId}`);
@@ -2273,6 +2601,516 @@
             });
         }
 
+        // ==================== Chat Functions ====================
+        let chatActive = false;
+        let chatMessages = []; // Store conversation history
+        let chatIsProcessing = false;
+
+        // Save chat settings to profile
+        async function saveChatSettings() {
+            if (!activeProfileId) return;
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile) return;
+
+            const chatApiKey = document.getElementById('chatApiKey').value;
+            const chatModel = document.getElementById('chatModel').value;
+            const llmContextLength = parseInt(document.getElementById('llmContextLength-chat')?.value) || 8192;
+
+            const updates = {};
+            if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
+            if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
+            if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;
+
+            if (Object.keys(updates).length > 0) {
+                await window.api.updateProfile(activeProfileId, updates);
+                Object.assign(profile, updates);
+            }
+        }
+
+        // Set up LLM provider change listener
+        function setupLlmProviderListener() {
+            const providerSelect = document.getElementById('llmProvider');
+            if (providerSelect) {
+                providerSelect.addEventListener('change', (e) => {
+                    const provider = e.target.value;
+                    const apiKeyGroup = document.getElementById('chatApiKeyGroup');
+                    const chatModelGroup = document.getElementById('chatModelGroup');
+                    const llmContextLengthGroup = document.getElementById('llmContextLengthGroup');
+                    const infoEl = document.getElementById('llmProviderInfo');
+
+                    if (provider === 'openai') {
+                        apiKeyGroup.style.display = 'block';
+                        chatModelGroup.style.display = 'block';
+                        llmContextLengthGroup.style.display = 'none';
+                        infoEl.textContent = t('chat.openaiInfo');
+                    } else {
+                        apiKeyGroup.style.display = 'none';
+                        chatModelGroup.style.display = 'none';
+                        llmContextLengthGroup.style.display = 'block';
+                        infoEl.textContent = t('chat.localInfo');
+                    }
+                });
+            }
+
+            // Set up event listeners for chat settings
+            const chatApiKey = document.getElementById('chatApiKey');
+            if (chatApiKey) {
+                chatApiKey.addEventListener('change', saveChatSettings);
+            }
+
+            const chatModel = document.getElementById('chatModel');
+            if (chatModel) {
+                chatModel.addEventListener('change', saveChatSettings);
+            }
+
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            if (llmContextLengthInput) {
+                llmContextLengthInput.addEventListener('change', saveChatSettings);
+            }
+        }
+
+        // Sync LLM chat settings from active profile
+        function syncLlmChatSettingsFromProfile() {
+            if (!activeProfileId) return;
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile) return;
+            
+            // Sync API key
+            const chatApiKey = document.getElementById('chatApiKey');
+            if (chatApiKey) {
+                // Use saved LLM chat API key, fallback to embedding API key if available
+                chatApiKey.value = profile.llmChatApiKey || profile.openAIApiKey || '';
+            }
+            
+            // Sync model
+            const chatModel = document.getElementById('chatModel');
+            if (chatModel) {
+                chatModel.value = profile.llmChatModel || 'gpt-5-mini';
+            }
+            
+            // Sync context length
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            if (llmContextLengthInput) {
+                llmContextLengthInput.value = profile.llmContextLength || 8192;
+            }
+        }
+
+        async function openChatModal() {
+            if (!activeProfileId) {
+                alert(t('ui.noActiveProfile'));
+                return;
+            }
+
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile?.databasePath) {
+                alert(t('ui.noDatabaseSelected'));
+                return;
+            }
+
+            const llmProvider = document.getElementById('llmProvider').value;
+            const chatApiKey = document.getElementById('chatApiKey').value;
+            const chatModel = document.getElementById('chatModel').value;
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            const llmContextLength = parseInt(llmContextLengthInput?.value) || 8192;
+
+            if (llmProvider === 'openai' && !chatApiKey) {
+                alert(t('chat.apiKeyRequired'));
+                return;
+            }
+
+            // Save LLM chat settings to profile if changed
+            const updates = {};
+            if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
+            if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
+            if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;
+            
+            if (Object.keys(updates).length > 0) {
+                await window.api.updateProfile(activeProfileId, updates);
+                Object.assign(profile, updates);
+            }
+
+            // For local models, show download progress and wait for model to be ready
+            if (llmProvider === 'local-qwen3') {
+                const openBtn = document.getElementById('openChatBtn');
+                openBtn.disabled = true;
+                openBtn.textContent = t('ui.loadingModel');
+
+                // Show download progress area
+                document.getElementById('llmDownloadProgress').style.display = 'block';
+            }
+
+            // Start chat session (this will download model if needed)
+            const success = await startChatSession(llmProvider, chatApiKey, chatModel);
+
+            // Reset button state
+            const openBtn = document.getElementById('openChatBtn');
+            openBtn.disabled = false;
+            openBtn.textContent = t('chat.openChat');
+
+            // Hide download progress
+            document.getElementById('llmDownloadProgress').style.display = 'none';
+
+            // Only open modal if session started successfully
+            if (success) {
+                document.getElementById('chatModal').classList.add('active');
+                // Reset chat messages display
+                const messagesEl = document.getElementById('chatMessages');
+                messagesEl.innerHTML = `
+                    <div class="chat-welcome" style="text-align: center; color: #86868b; padding: 40px 20px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📚</div>
+                        <h3 style="color: #1d1d1f; margin-bottom: 8px;">${t('chat.welcomeTitle')}</h3>
+                        <p>${t('chat.welcomeDescription')}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function closeChatModal() {
+            document.getElementById('chatModal').classList.remove('active');
+
+            // Stop chat session
+            if (activeProfileId) {
+                window.api.stopChat(activeProfileId);
+            }
+            chatActive = false;
+            updateChatStatus(t('chat.notConnected'));
+        }
+
+        async function startChatSession(llmProvider, apiKey, model) {
+            const statusEl = document.getElementById('chatStatusIndicator');
+            statusEl.textContent = t('chat.searchingDocuments').replace('...', '');
+            statusEl.style.color = '#ff9500';
+
+            try {
+                const result = await window.api.startChat(
+                    activeProfileId,
+                    llmProvider,
+                    apiKey,
+                    model || 'gpt-5-mini'
+                );
+
+                if (result.success) {
+                    chatActive = true;
+                    updateChatStatus(llmProvider === 'openai' ? t('chat.connectedOpenai') : t('chat.connectedLocal'));
+                    // Clear previous messages if any
+                    chatMessages = [];
+                    // Add system message
+                    chatMessages.push({
+                        role: 'system',
+                        content: 'You are a helpful assistant that answers questions about the user\'s documents. When asked a question, search the documents using the available tools and provide accurate answers based on the content found. Always cite the source documents when providing information from them.'
+                    });
+                    return true;
+                } else {
+                    updateChatStatus(t('chat.connectionFailed'));
+                    showChatError(result.error);
+                    return false;
+                }
+            } catch (error) {
+                updateChatStatus(t('chat.connectionFailed'));
+                showChatError(error.message);
+                return false;
+            }
+        }
+
+        function updateChatStatus(status) {
+            const statusEl = document.getElementById('chatStatusIndicator');
+            statusEl.textContent = status;
+            // Check if status contains "Connected" in any language by checking color patterns
+            const connectedStatuses = [t('chat.connectedOpenai'), t('chat.connectedLocal')];
+            const notConnectedStatus = t('chat.notConnected');
+            if (connectedStatuses.includes(status)) {
+                statusEl.style.color = '#34c759';
+            } else if (status === notConnectedStatus) {
+                statusEl.style.color = '#86868b';
+            } else {
+                statusEl.style.color = '#ff9500';
+            }
+        }
+
+        function showChatError(message) {
+            const errorEl = document.getElementById('chatError');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function handleChatKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        }
+
+        async function sendChatMessage() {
+            if (!chatActive || chatIsProcessing) return;
+
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            // Clear input
+            input.value = '';
+
+            // Remove welcome message if present
+            const welcomeEl = document.querySelector('.chat-welcome');
+            if (welcomeEl) {
+                welcomeEl.remove();
+            }
+
+            // Add user message to UI
+            addMessageToUI('user', message);
+
+            // Add to conversation history
+            chatMessages.push({ role: 'user', content: message });
+
+            // Show typing indicator
+            showTypingIndicator();
+            chatIsProcessing = true;
+
+            try {
+                const llmProvider = document.getElementById('llmProvider').value;
+                const chatApiKey = document.getElementById('chatApiKey').value;
+                const chatModel = document.getElementById('chatModel').value;
+
+                const result = await window.api.sendChatMessage({
+                    profileId: activeProfileId,
+                    messages: chatMessages,
+                    llmProvider,
+                    openaiApiKey: chatApiKey,
+                    openaiModel: chatModel || 'gpt-5-mini',
+                    enableTools: true
+                });
+
+                // Hide typing indicator
+                hideTypingIndicator();
+
+                if (result.success) {
+                    // Add assistant response to UI with tool calls if present
+                    addMessageToUI('assistant', result.message.content, result.toolCalls);
+
+                    // Add to conversation history
+                    chatMessages.push(result.message);
+                } else {
+                    showChatError(result.error);
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                showChatError(error.message);
+            } finally {
+                chatIsProcessing = false;
+            }
+        }
+
+        /**
+         * Simple markdown renderer for chat messages
+         * Supports: bold, italic, links, code blocks, inline code, lists, headers
+         */
+        function renderMarkdown(text) {
+            if (!text) return '';
+
+            // Escape HTML first to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Code blocks (```...```) - must be processed first
+            html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+                return `<pre class="md-code-block"><code>${code.trim()}</code></pre>`;
+            });
+
+            // Inline code (`...`)
+            html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+
+            // Bold (**...**)
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+            // Italic (*...*)
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+            // Links [text](url) - unescape the URL part
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+                // Decode HTML entities in URL
+                const decodedUrl = url.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                return `<a href="${decodedUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${text}</a>`;
+            });
+
+            // Headers (## Header)
+            html = html.replace(/^### (.+)$/gm, '<h4 class="md-header">$1</h4>');
+            html = html.replace(/^## (.+)$/gm, '<h3 class="md-header">$1</h3>');
+            html = html.replace(/^# (.+)$/gm, '<h2 class="md-header">$1</h2>');
+
+            // Unordered lists (- item)
+            html = html.replace(/^- (.+)$/gm, '<li class="md-list-item">$1</li>');
+            html = html.replace(/(<li class="md-list-item">.*<\/li>\n?)+/g, '<ul class="md-list">$&</ul>');
+
+            // Numbered lists (1. item)
+            html = html.replace(/^\d+\. (.+)$/gm, '<li class="md-list-item">$1</li>');
+
+            // Paragraphs (double newlines)
+            html = html.replace(/\n\n/g, '</p><p>');
+
+            // Single newlines to <br> (except within code blocks and lists)
+            html = html.replace(/\n/g, '<br>');
+
+            // Wrap in paragraph
+            html = '<p>' + html + '</p>';
+
+            // Clean up empty paragraphs
+            html = html.replace(/<p><\/p>/g, '');
+            html = html.replace(/<p>(<pre|<ul|<ol|<h[2-4])/g, '$1');
+            html = html.replace(/(<\/pre>|<\/ul>|<\/ol>|<\/h[2-4]>)<\/p>/g, '$1');
+
+            return html;
+        }
+
+        function addMessageToUI(role, content, toolCalls = null) {
+            const messagesEl = document.getElementById('chatMessages');
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}`;
+
+            const roleLabel = document.createElement('div');
+            roleLabel.className = 'chat-message-role';
+            roleLabel.textContent = role === 'user' ? t('chat.you') : t('chat.assistant');
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+
+            // Render markdown for assistant messages, plain text for user
+            if (role === 'assistant') {
+                contentDiv.innerHTML = renderMarkdown(content);
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(roleLabel);
+
+            // Add tool calls if present
+            if (toolCalls && toolCalls.length > 0) {
+                const toolCallsContainer = document.createElement('div');
+                toolCallsContainer.className = 'chat-tool-calls';
+
+                toolCalls.forEach((tc, index) => {
+                    const toolCallDiv = document.createElement('div');
+                    toolCallDiv.className = 'chat-tool-call';
+
+                    const toolCallHeader = document.createElement('div');
+                    toolCallHeader.className = 'chat-tool-call-header';
+                    toolCallHeader.innerHTML = `
+                        <span class="tool-icon">🔧</span>
+                        <span class="tool-name">${t('chat.toolCall')}: ${tc.name}</span>
+                        <button class="tool-toggle" onclick="toggleToolDetails(this)">
+                            ${t('chat.showDetails')}
+                        </button>
+                    `;
+
+                    const toolCallDetails = document.createElement('div');
+                    toolCallDetails.className = 'chat-tool-call-details';
+                    toolCallDetails.style.display = 'none';
+
+                    const argsSection = document.createElement('div');
+                    argsSection.className = 'chat-tool-call-args';
+                    argsSection.innerHTML = `<strong>${t('chat.arguments')}:</strong><pre>${JSON.stringify(tc.arguments, null, 2)}</pre>`;
+
+                    const responseSection = document.createElement('div');
+                    responseSection.className = 'chat-tool-call-response';
+                    responseSection.innerHTML = `<strong>${t('chat.response')}:</strong><pre>${typeof tc.response === 'string' ? tc.response : JSON.stringify(tc.response, null, 2)}</pre>`;
+
+                    toolCallDetails.appendChild(argsSection);
+                    toolCallDetails.appendChild(responseSection);
+
+                    toolCallDiv.appendChild(toolCallHeader);
+                    toolCallDiv.appendChild(toolCallDetails);
+                    toolCallsContainer.appendChild(toolCallDiv);
+                });
+
+                messageDiv.appendChild(toolCallsContainer);
+            }
+
+            messageDiv.appendChild(contentDiv);
+            messagesEl.appendChild(messageDiv);
+
+            // Scroll to bottom
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function toggleToolDetails(button) {
+            const toolCallDiv = button.closest('.chat-tool-call');
+            const details = toolCallDiv.querySelector('.chat-tool-call-details');
+            if (details.style.display === 'none') {
+                details.style.display = 'block';
+                button.textContent = t('chat.hideDetails');
+            } else {
+                details.style.display = 'none';
+                button.textContent = t('chat.showDetails');
+            }
+        }
+
+        function showTypingIndicator() {
+            const messagesEl = document.getElementById('chatMessages');
+
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'chat-message assistant';
+            typingDiv.id = 'chatTypingIndicator';
+
+            const typingContent = document.createElement('div');
+            typingContent.className = 'chat-typing';
+            typingContent.innerHTML = `
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+                <div class="chat-typing-dot"></div>
+            `;
+
+            typingDiv.appendChild(typingContent);
+            messagesEl.appendChild(typingDiv);
+
+            // Scroll to bottom
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('chatTypingIndicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        // Listen for LLM download progress
+        window.api.onLlmDownloadProgress((data) => {
+            const { profileId, status, file, progress } = data;
+
+            if (profileId !== activeProfileId) return;
+
+            const progressEl = document.getElementById('llmDownloadProgress');
+            const fileEl = document.getElementById('llmDownloadFile');
+            const barEl = document.getElementById('llmDownloadBar');
+            const textEl = document.getElementById('llmDownloadText');
+
+            if (status === 'downloading') {
+                progressEl.style.display = 'block';
+                fileEl.textContent = file || t('chat.downloadingModel');
+                barEl.style.width = `${progress || 0}%`;
+                textEl.textContent = `${progress || 0}%`;
+            } else if (status === 'ready') {
+                progressEl.style.display = 'none';
+            } else if (status === 'error') {
+                progressEl.style.display = 'none';
+                showChatError(data.error || t('common.error'));
+            }
+        });
+
+        // Listen for chat errors
+        window.api.onChatError((data) => {
+            if (data.profileId === activeProfileId) {
+                hideTypingIndicator();
+                showChatError(data.error);
+                chatIsProcessing = false;
+            }
+        });
+
         // Browser modal functions
         let currentView = 'files'; // 'files' or 'chunks'
         let selectedFilePath = null;
@@ -2535,13 +3373,15 @@
         // Simple translation function
         function getModelDescription(provider) {
             const descriptions = {
-                'local-minilm': t('ui.minilmDescription'),
-                'local-e5': t('ui.e5Description'),
-                'local-e5-large': t('ui.e5LargeDescription'),
-                'local-qwen': t('ui.e5Description'), // Fallback for old provider
+                'local': t('ui.qwen3Description'),
+                // Legacy providers map to local description
+                'local-minilm': t('ui.qwen3Description'),
+                'local-e5': t('ui.qwen3Description'),
+                'local-e5-large': t('ui.qwen3Description'),
+                'local-qwen': t('ui.qwen3Description'),
                 'openai': t('ui.openaiDescription')
             };
-            return descriptions[provider] || '';
+            return descriptions[provider] || t('ui.qwen3Description');
         }
 
         function t(key, options = {}) {
@@ -2617,31 +3457,49 @@
             if (Object.keys(translations).length === 0) {
                 return;
             }
-            
+
+            // Apply translations to all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                const translated = t(key);
+                if (translated !== key) {
+                    el.textContent = translated;
+                }
+            });
+
+            // Apply translations to placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                const translated = t(key);
+                if (translated !== key) {
+                    el.placeholder = translated;
+                }
+            });
+
             // Update header status
             updateOverallStatus();
-            
+
             // Update MCP Server section
             const mcpTitle = document.querySelector('.card .card-title');
             if (mcpTitle && mcpTitle.textContent.includes('MCP Server')) {
                 mcpTitle.textContent = `🌐 ${t('mcp.title')}`;
             }
-            
+
             const mcpPortLabel = document.querySelector('label[for="mcpPort"]');
             if (mcpPortLabel) {
                 mcpPortLabel.textContent = t('mcp.port') + ':';
             }
-            
+
             const mcpToggleBtn = document.getElementById('mcpToggleBtn');
             if (mcpToggleBtn) {
                 mcpToggleBtn.textContent = mcpRunning ? t('mcp.stopServer') : t('mcp.startServer');
             }
-            
+
             const mcpConfigureBtn = document.getElementById('mcpConfigureBtn');
             if (mcpConfigureBtn && mcpConfigureBtn.textContent.includes('Configure')) {
                 mcpConfigureBtn.textContent = t('mcp.configureClients', {});
             }
-            
+
             // Update active profile content
             if (activeProfileId) {
                 renderActiveProfile();
@@ -2655,7 +3513,7 @@
                 setTimeout(initializeApp, 100);
                 return;
             }
-            
+
             // Register language changed listener
             const listenerRegistered = registerLanguageChangedListener();
             if (!listenerRegistered) {
@@ -2663,8 +3521,9 @@
                     registerLanguageChangedListener();
                 }, 500);
             }
-            
+
             setupLanguageSelector(); // Set up language selector event listener
+            setupLlmProviderListener(); // Set up LLM provider change listener
             initLanguage().then(() => {
                 // Wait for translations to load before loading profiles
                 loadProfiles();

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { FolderSyncer } from '../src/syncer';
 import { DatabaseManager } from '../src/database';
 import { ContentProcessor } from '../src/processor';
-import { EmbeddingService, EmbeddingProvider, MINILM_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION, getEmbeddingDimension } from '../src/embeddings';
+import { EmbeddingService, EmbeddingProvider, MINILM_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION, getEmbeddingDimension, isModelDownloaded } from '../src/embeddings';
 import { McpServer } from '../src/mcp-server';
 import {
   createTempDir,
@@ -199,8 +199,8 @@ Key metrics to track:
 
   afterAll(async () => {
     // Stop all syncers
-    if (profile1Syncer) profile1Syncer.stop();
-    if (profile2Syncer) profile2Syncer.stop();
+    if (profile1Syncer) await profile1Syncer.stop();
+    if (profile2Syncer) await profile2Syncer.stop();
 
     // Stop all MCP servers
     if (profile1McpServer) await profile1McpServer.stop();
@@ -231,17 +231,17 @@ Key metrics to track:
 
   describe('Embedding Provider Configuration', () => {
     it('should return correct dimensions for each provider', () => {
-      expect(getEmbeddingDimension('local-minilm')).toBe(384);
-      expect(getEmbeddingDimension('local-e5')).toBe(768);
-      expect(getEmbeddingDimension('local-e5-large')).toBe(1024);
-      expect(getEmbeddingDimension('openai')).toBe(3072);
+      expect(getEmbeddingDimension('local-minilm')).toBe(MINILM_EMBEDDING_DIMENSION);
+      expect(getEmbeddingDimension('local-e5')).toBe(MINILM_EMBEDDING_DIMENSION);
+      expect(getEmbeddingDimension('local-e5-large')).toBe(MINILM_EMBEDDING_DIMENSION);
+      expect(getEmbeddingDimension('openai')).toBe(OPENAI_EMBEDDING_DIMENSION);
     });
 
     it('should create databases with correct embedding dimensions', () => {
-      // Profile 1 uses local-minilm (384 dimensions)
+      // Profile 1 uses local embeddings
       expect(profile1Database).not.toBeNull();
       
-      // Profile 2 uses OpenAI (3072 dimensions)
+      // Profile 2 uses OpenAI embeddings
       expect(profile2Database).not.toBeNull();
     });
   });
@@ -414,17 +414,16 @@ Key metrics to track:
       
       // This simulates why we need to clear the database when switching providers
       // The embedding dimensions are incompatible
-      expect(localDim).toBe(384);
-      expect(openaiDim).toBe(3072);
+      expect(localDim).toBe(MINILM_EMBEDDING_DIMENSION);
+      expect(openaiDim).toBe(OPENAI_EMBEDDING_DIMENSION);
     });
 
-    it('should require new database when switching between local models', () => {
+    it('should not require new database when switching between local models', () => {
       const minilmDim = getEmbeddingDimension('local-minilm');
       const e5Dim = getEmbeddingDimension('local-e5');
       
-      expect(minilmDim).not.toBe(e5Dim);
-      expect(minilmDim).toBe(384);
-      expect(e5Dim).toBe(768);
+      expect(minilmDim).toBe(e5Dim);
+      expect(minilmDim).toBe(MINILM_EMBEDDING_DIMENSION);
     });
   });
 

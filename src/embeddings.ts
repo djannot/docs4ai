@@ -2,89 +2,63 @@ import OpenAI from 'openai';
 import * as path from 'path';
 import { app } from 'electron';
 import * as fs from 'fs';
-import { Worker } from 'worker_threads';
+import { LlamaServer, QWEN3_EMBEDDING_MODEL, ModelDownloadProgress } from './llama-server';
 
-// CRITICAL: Pre-load onnxruntime-node in the main thread to avoid
-// "Module did not self-register" errors when worker threads restart.
-// See: https://github.com/xenova/transformers.js/issues/651
-try {
-    require('onnxruntime-node');
-} catch (error) {
-    // It's okay if this fails - optional dependency might not be installed
-    // but we still want to try
-}
-
-// Get the cache directory for models
+// Get the models directory
 export function getModelCacheDir(): string {
-    if (app?.isPackaged) {
-        // Production: use app's userData directory
-        return path.join(app.getPath('userData'), 'models');
-    } else {
-        // Development: use local cache in project directory
-        return path.join(__dirname, '..', 'models');
-    }
+    const userDataPath = app.getPath('userData');
+    return path.join(userDataPath, 'models');
 }
 
-// Provider types
-export type EmbeddingProvider = 'local-minilm' | 'local-e5' | 'local-e5-large' | 'openai';
+// Provider types - includes legacy types for backward compatibility
+// All local-* variants map to the same Qwen3 embedding model via llama-server
+export type EmbeddingProvider = 'local' | 'local-minilm' | 'local-e5' | 'local-e5-large' | 'openai';
 
-// Model configurations
+// Model configuration
 export interface LocalModelConfig {
     id: string;
     name: string;
-    huggingFaceId: string;
+    repoId: string;
+    filename: string;
     dimension: number;
     sizeApprox: string;
     description: string;
-    quantized: boolean;
 }
 
-export const LOCAL_MODELS: Record<string, LocalModelConfig> = {
-    'local-minilm': {
-        id: 'local-minilm',
-        name: 'MiniLM-L6 (Fast)',
-        huggingFaceId: 'Xenova/all-MiniLM-L6-v2',
-        dimension: 384,
-        sizeApprox: '~23 MB',
-        description: 'Fast and lightweight, good for general use',
-        quantized: true
-    },
-    'local-e5': {
-        id: 'local-e5',
-        name: 'E5 Multilingual Base',
-        huggingFaceId: 'Xenova/multilingual-e5-base',
-        dimension: 768,
-        sizeApprox: '~440 MB',
-        description: 'Good quality, 100+ languages',
-        quantized: true
-    },
-    'local-e5-large': {
-        id: 'local-e5-large',
-        name: 'E5 Multilingual Large',
-        huggingFaceId: 'Xenova/multilingual-e5-large',
-        dimension: 1024,
-        sizeApprox: '~1.1 GB',
-        description: 'Best quality, 100+ languages, largest download',
-        quantized: true
-    }
+// Single local model using Qwen3 Embedding via llama-server
+export const LOCAL_MODEL: LocalModelConfig = {
+    id: 'local',
+    name: QWEN3_EMBEDDING_MODEL.name,
+    repoId: QWEN3_EMBEDDING_MODEL.repoId,
+    filename: QWEN3_EMBEDDING_MODEL.filename,
+    dimension: QWEN3_EMBEDDING_MODEL.dimension,
+    sizeApprox: '~639 MB',
+    description: 'High quality embeddings via llama.cpp'
 };
 
-// Dimension constants for backward compatibility
-export const MINILM_EMBEDDING_DIMENSION = 384;
-export const E5_EMBEDDING_DIMENSION = 768;
-export const E5_LARGE_EMBEDDING_DIMENSION = 1024;
+// Legacy LOCAL_MODELS for backward compatibility (all map to same model)
+export const LOCAL_MODELS: Record<string, LocalModelConfig> = {
+    'local': LOCAL_MODEL,
+    'local-minilm': LOCAL_MODEL,
+    'local-e5': LOCAL_MODEL,
+    'local-e5-large': LOCAL_MODEL
+};
+
+// Dimension constants
+export const LOCAL_EMBEDDING_DIMENSION = QWEN3_EMBEDDING_MODEL.dimension;
 export const OPENAI_EMBEDDING_DIMENSION = 3072;
 
-// Legacy constant for backward compatibility
-export const LOCAL_EMBEDDING_DIMENSION = MINILM_EMBEDDING_DIMENSION;
+// Legacy dimension constants for backward compatibility
+export const MINILM_EMBEDDING_DIMENSION = LOCAL_EMBEDDING_DIMENSION;
+export const E5_EMBEDDING_DIMENSION = LOCAL_EMBEDDING_DIMENSION;
+export const E5_LARGE_EMBEDDING_DIMENSION = LOCAL_EMBEDDING_DIMENSION;
 
 // Get embedding dimension for a provider
 export function getEmbeddingDimension(provider: EmbeddingProvider): number {
     if (provider === 'openai') {
         return OPENAI_EMBEDDING_DIMENSION;
     }
-    const model = LOCAL_MODELS[provider];
-    return model?.dimension || MINILM_EMBEDDING_DIMENSION;
+    return LOCAL_EMBEDDING_DIMENSION;
 }
 
 export class InvalidApiKeyError extends Error {
@@ -94,27 +68,6 @@ export class InvalidApiKeyError extends Error {
     }
 }
 
-interface EmbeddingRequest {
-    id: string;
-    type: 'embed' | 'init' | 'shutdown';
-    text?: string;
-}
-
-interface EmbeddingResponse {
-    id: string;
-    type: 'ready' | 'embedding' | 'error' | 'progress';
-    embedding?: number[];
-    tokens?: number;
-    error?: string;
-    progress?: {
-        status: string;
-        file?: string;
-        loaded?: number;
-        total?: number;
-        percent?: number;
-    };
-}
-
 export interface DownloadProgress {
     status: 'loading' | 'downloading' | 'done' | 'ready';
     file?: string;
@@ -122,53 +75,42 @@ export interface DownloadProgress {
     modelName?: string;
 }
 
-// Queue item for sequential processing
-interface QueuedRequest {
-    id: string;
-    text: string;
-    resolve: (value: { embedding: number[]; tokens: number }) => void;
-    reject: (error: Error) => void;
-    retried: boolean;
-}
+// Port for embedding server (different from chat server)
+const EMBEDDING_SERVER_PORT = 8788;
 
 export class EmbeddingService {
     private client: OpenAI | null = null;
     private openaiModel = 'text-embedding-3-large';
     private _isValid = true;
     private provider: EmbeddingProvider;
-    private worker: Worker | null = null;
+    private llamaServer: LlamaServer | null = null;
     private initPromise: Promise<void> | null = null;
     private modelConfig: LocalModelConfig | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
-    private requestId = 0;
-    private pendingRequests: Map<string, { resolve: (value: any) => void; reject: (error: Error) => void; text: string; retried: boolean }> = new Map();
-    private isWorkerReady = false;
-    private isShuttingDown = false; // Prevent restart during shutdown
-    private restartAttempts = 0;
-    private readonly MAX_RESTART_ATTEMPTS = 3;
-    private readonly RESTART_DELAY_MS = 1000;
-    private readonly WORKER_REQUEST_TIMEOUT_MS = 60000; // 60 seconds timeout per request
+    private isServerReady = false;
+    private contextLength: number;
 
-    // Request queue for sequential processing
-    private requestQueue: QueuedRequest[] = [];
-    private currentRequestId: string | null = null;
-    private currentRequestTimer: NodeJS.Timeout | null = null;
+    constructor(provider: EmbeddingProvider = 'local', apiKey?: string, contextLength?: number) {
+        // Normalize legacy providers to new simplified providers
+        if (provider === 'local-minilm' || provider === 'local-e5' || provider === 'local-e5-large') {
+            this.provider = 'local';
+        } else {
+            this.provider = provider;
+        }
 
-    constructor(provider: EmbeddingProvider = 'local-minilm', apiKey?: string) {
-        this.provider = provider;
-        
-        if (provider === 'openai') {
+        // Set context length (default: 8192)
+        this.contextLength = contextLength ?? 8192;
+
+        if (this.provider === 'openai') {
             if (!apiKey) {
                 throw new Error('OpenAI API key is required when using OpenAI provider');
             }
             this.client = new OpenAI({ apiKey });
         } else {
-            // Local model
-            this.modelConfig = LOCAL_MODELS[provider];
-            if (!this.modelConfig) {
-                throw new Error(`Unknown local model provider: ${provider}`);
-            }
-            this.initPromise = this.initializeWorker();
+            // Local model via llama-server
+            this.modelConfig = LOCAL_MODEL;
+            this.llamaServer = new LlamaServer();
+            this.initPromise = this.initializeServer();
         }
     }
 
@@ -176,297 +118,71 @@ export class EmbeddingService {
         this.downloadProgressCallback = callback;
     }
 
-    private async initializeWorker(): Promise<void> {
-        if (!this.modelConfig) {
-            throw new Error('No model config available');
+    private async initializeServer(): Promise<void> {
+        if (!this.llamaServer || !this.modelConfig) {
+            throw new Error('No llama server or model config available');
         }
 
-        return new Promise((resolve, reject) => {
-            try {
-                // Get the path to the worker script
-                // When running via ts-jest, __dirname is 'src/', but compiled worker is in 'dist/'
-                // So we need to check both locations
-                let workerPath = path.join(__dirname, 'embedding-worker.js');
-                if (!fs.existsSync(workerPath)) {
-                    // Try dist/ directory (when running from src/ via ts-jest)
-                    workerPath = path.join(__dirname, '..', 'dist', 'embedding-worker.js');
+        const modelsDir = getModelCacheDir();
+        const modelPath = path.join(modelsDir, this.modelConfig.filename);
+
+        // Download model if needed
+        if (!this.llamaServer.modelExists(modelPath)) {
+            console.log(`Downloading embedding model: ${this.modelConfig.name}...`);
+
+            const progressCallback = (progress: ModelDownloadProgress) => {
+                if (this.downloadProgressCallback) {
+                    this.downloadProgressCallback({
+                        status: progress.status === 'downloading' ? 'downloading' :
+                               progress.status === 'ready' ? 'ready' : 'loading',
+                        file: progress.file,
+                        percent: progress.progress,
+                        modelName: this.modelConfig!.name
+                    });
                 }
-                
-                // Ensure cache directory exists
-                const cacheDir = getModelCacheDir();
-                if (!fs.existsSync(cacheDir)) {
-                    fs.mkdirSync(cacheDir, { recursive: true });
-                }
-                
-                console.log(`Starting embedding worker for: ${this.modelConfig!.name}...`);
-                console.log(`Model: ${this.modelConfig!.huggingFaceId}`);
-                console.log(`Worker path: ${workerPath}`);
-                console.log(`Cache dir: ${cacheDir}`);
-                
-                // Create worker with model configuration
-                this.worker = new Worker(workerPath, {
-                    workerData: {
-                        modelId: this.modelConfig!.huggingFaceId,
-                        quantized: this.modelConfig!.quantized,
-                        cacheDir
-                    }
+            };
+
+            await this.llamaServer.downloadModel(
+                this.modelConfig.repoId,
+                this.modelConfig.filename,
+                modelPath,
+                progressCallback
+            );
+        }
+
+        // Start the llama-server with embedding mode
+        console.log(`Starting embedding server on port ${EMBEDDING_SERVER_PORT}...`);
+
+        const progressCallback = (progress: ModelDownloadProgress) => {
+            if (this.downloadProgressCallback && progress.status === 'ready') {
+                this.downloadProgressCallback({
+                    status: 'ready',
+                    modelName: this.modelConfig!.name
                 });
-
-                // Handle messages from worker
-                this.worker.on('message', (response: EmbeddingResponse) => {
-                    if (response.type === 'ready') {
-                        this.isWorkerReady = true;
-                        console.log(`Embedding worker ready: ${this.modelConfig!.name}`);
-                        // Send ready progress notification
-                        if (this.downloadProgressCallback) {
-                            this.downloadProgressCallback({
-                                status: 'ready',
-                                modelName: this.modelConfig!.name
-                            });
-                        }
-                        resolve();
-                    } else if (response.type === 'progress') {
-                        // Forward progress to callback
-                        if (this.downloadProgressCallback && response.progress) {
-                            this.downloadProgressCallback({
-                                status: response.progress.status as 'loading' | 'downloading' | 'done',
-                                file: response.progress.file,
-                                percent: response.progress.percent,
-                                modelName: this.modelConfig!.name
-                            });
-                        }
-                    } else if (response.type === 'embedding') {
-                        console.log(`[Queue] Received embedding response for ${response.id}`);
-                        // Clear the timeout timer
-                        this.clearRequestTimer();
-                        const pending = this.pendingRequests.get(response.id);
-                        if (pending) {
-                            this.pendingRequests.delete(response.id);
-                            pending.resolve({
-                                embedding: response.embedding!,
-                                tokens: response.tokens!
-                            });
-                        } else {
-                            console.log(`[Queue] No pending request found for ${response.id} (may have timed out)`);
-                        }
-                        // Process next item in queue
-                        this.currentRequestId = null;
-                        this.processNextInQueue();
-                    } else if (response.type === 'error') {
-                        console.log(`[Queue] Received error response for ${response.id}: ${response.error}`);
-                        // Clear the timeout timer
-                        this.clearRequestTimer();
-                        if (response.id === 'init') {
-                            reject(new Error(response.error || 'Failed to initialize worker'));
-                        } else {
-                            const pending = this.pendingRequests.get(response.id);
-                            if (pending) {
-                                this.pendingRequests.delete(response.id);
-                                pending.reject(new Error(response.error || 'Worker error'));
-                            }
-                            // Process next item in queue even on error
-                            this.currentRequestId = null;
-                            this.processNextInQueue();
-                        }
-                    }
-                });
-
-                // Handle worker errors
-                this.worker.on('error', (error) => {
-                    console.error('Embedding worker error:', error);
-                    this.isWorkerReady = false;
-                    this.currentRequestId = null;
-                    this.clearRequestTimer();
-
-                    // Reject all pending requests
-                    for (const [id, pending] of this.pendingRequests) {
-                        pending.reject(error);
-                    }
-                    this.pendingRequests.clear();
-
-                    // Reject all queued requests
-                    for (const req of this.requestQueue) {
-                        req.reject(error);
-                    }
-                    this.requestQueue = [];
-                });
-
-                // Handle worker exit
-                this.worker.on('exit', (code) => {
-                    console.log(`Embedding worker exited with code: ${code}`);
-                    this.isWorkerReady = false;
-                    this.worker = null;
-
-                    // If not shutting down and exit was unexpected, try to restart
-                    if (!this.isShuttingDown && code !== 0) {
-                        console.log('Worker crashed unexpectedly, will attempt restart...');
-                        this.handleWorkerCrash();
-                    } else {
-                        // Normal shutdown - reject all pending requests
-                        for (const [id, pending] of this.pendingRequests) {
-                            pending.reject(new Error(`Worker exited with code ${code}`));
-                        }
-                        this.pendingRequests.clear();
-                    }
-                });
-
-            } catch (error) {
-                console.error('Failed to create embedding worker:', error);
-                reject(error);
             }
-        });
+        };
+
+        await this.llamaServer.start({
+            modelPath,
+            port: EMBEDDING_SERVER_PORT,
+            contextSize: this.contextLength,  // Use configured context length
+            threads: 4,
+            embedding: true    // Enable embedding mode
+        }, progressCallback);
+
+        this.isServerReady = true;
+        console.log(`Embedding server ready: ${this.modelConfig.name}`);
     }
 
     /**
-     * Handle worker crash by attempting to restart and retry pending requests
-     */
-    private async handleWorkerCrash(): Promise<void> {
-        if (this.isShuttingDown) {
-            return;
-        }
-
-        this.restartAttempts++;
-
-        if (this.restartAttempts > this.MAX_RESTART_ATTEMPTS) {
-            console.error(`Worker crashed ${this.MAX_RESTART_ATTEMPTS} times, giving up. Manual restart required.`);
-            // Reject all pending requests
-            for (const [id, pending] of this.pendingRequests) {
-                pending.reject(new Error('Worker crashed repeatedly, service unavailable'));
-            }
-            this.pendingRequests.clear();
-            // Reject all queued requests
-            for (const req of this.requestQueue) {
-                req.reject(new Error('Worker crashed repeatedly, service unavailable'));
-            }
-            this.requestQueue = [];
-            this.currentRequestId = null;
-            return;
-        }
-
-        console.log(`Attempting worker restart (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})...`);
-
-        // Save pending requests that haven't been retried yet
-        const requestsToRetry: QueuedRequest[] = [];
-
-        // Save the current in-flight request
-        for (const [id, pending] of this.pendingRequests) {
-            if (!pending.retried) {
-                requestsToRetry.push({
-                    id,
-                    text: pending.text,
-                    resolve: pending.resolve,
-                    reject: pending.reject,
-                    retried: true // Mark as retried
-                });
-            } else {
-                // Already retried once, reject it
-                pending.reject(new Error('Worker crashed during retry'));
-            }
-        }
-        this.pendingRequests.clear();
-        this.currentRequestId = null;
-
-        // Save queued requests (they haven't been sent yet, so don't mark as retried)
-        const queuedToRetry = [...this.requestQueue];
-        this.requestQueue = [];
-
-        // Wait before restart (allows ONNX runtime to fully unload)
-        await new Promise(resolve => setTimeout(resolve, this.RESTART_DELAY_MS));
-
-        if (this.isShuttingDown) {
-            // Shutdown was requested during the delay
-            for (const req of requestsToRetry) {
-                req.reject(new Error('Service shutting down'));
-            }
-            for (const req of queuedToRetry) {
-                req.reject(new Error('Service shutting down'));
-            }
-            return;
-        }
-
-        try {
-            // Restart the worker
-            this.initPromise = this.initializeWorker();
-            await this.initPromise;
-
-            // Reset restart attempts on successful restart
-            this.restartAttempts = 0;
-
-            // Re-queue all requests (in-flight first, then queued)
-            const totalToRetry = requestsToRetry.length + queuedToRetry.length;
-            console.log(`Worker restarted, re-queueing ${totalToRetry} request(s)...`);
-
-            // Add in-flight requests back to queue first (they were being processed)
-            for (const req of requestsToRetry) {
-                this.requestQueue.push(req);
-            }
-
-            // Add previously queued requests
-            for (const req of queuedToRetry) {
-                this.requestQueue.push(req);
-            }
-
-            // Start processing the queue
-            this.processNextInQueue();
-        } catch (error) {
-            console.error('Failed to restart worker:', error);
-            // Reject all saved requests
-            for (const req of requestsToRetry) {
-                req.reject(new Error(`Worker restart failed: ${error}`));
-            }
-            for (const req of queuedToRetry) {
-                req.reject(new Error(`Worker restart failed: ${error}`));
-            }
-        }
-    }
-
-    /**
-     * Terminate the worker thread. Call this when shutting down.
+     * Terminate the llama-server. Call this when shutting down.
      */
     async terminate(): Promise<void> {
-        this.isShuttingDown = true; // Prevent auto-restart
-
-        // Clear any pending request timer
-        this.clearRequestTimer();
-
-        // Reject all queued requests
-        for (const req of this.requestQueue) {
-            req.reject(new Error('Service shutting down'));
+        if (this.llamaServer) {
+            await this.llamaServer.stop();
+            this.llamaServer = null;
         }
-        this.requestQueue = [];
-        this.currentRequestId = null;
-
-        if (this.worker) {
-            const request: EmbeddingRequest = { id: 'shutdown', type: 'shutdown' };
-            this.worker.postMessage(request);
-
-            // Give worker time to clean up, then force terminate
-            await new Promise<void>((resolve) => {
-                const timeout = setTimeout(() => {
-                    if (this.worker) {
-                        this.worker.terminate();
-                        this.worker = null;
-                    }
-                    resolve();
-                }, 1000);
-
-                if (this.worker) {
-                    this.worker.once('exit', () => {
-                        clearTimeout(timeout);
-                        this.worker = null;
-                        resolve();
-                    });
-                } else {
-                    clearTimeout(timeout);
-                    resolve();
-                }
-            });
-
-            // CRITICAL: Add delay after worker exit to ensure native modules (onnxruntime-node)
-            // are fully unloaded before a new worker can load them. Without this delay,
-            // restarting the worker causes "Module did not self-register" errors.
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        this.isServerReady = false;
     }
 
     get isValid(): boolean {
@@ -485,72 +201,13 @@ export class EmbeddingService {
         return this.modelConfig;
     }
 
-    /**
-     * Get the current queue size (for monitoring/debugging)
-     */
-    getQueueSize(): number {
-        return this.requestQueue.length;
-    }
-
-    /**
-     * Check if currently processing a request
-     */
-    isProcessing(): boolean {
-        return this.currentRequestId !== null;
-    }
-
-    /**
-     * Clear the current request timeout timer
-     */
-    private clearRequestTimer(): void {
-        if (this.currentRequestTimer) {
-            clearTimeout(this.currentRequestTimer);
-            this.currentRequestTimer = null;
-        }
-    }
-
-    /**
-     * Start a timeout timer for the current request
-     */
-    private startRequestTimer(requestId: string): void {
-        this.clearRequestTimer();
-        this.currentRequestTimer = setTimeout(() => {
-            this.handleRequestTimeout(requestId);
-        }, this.WORKER_REQUEST_TIMEOUT_MS);
-    }
-
-    /**
-     * Handle worker request timeout - restart worker and continue queue
-     */
-    private handleRequestTimeout(requestId: string): void {
-        console.error(`[Queue] Request ${requestId} timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms - worker may be stuck`);
-
-        // Clear the timer
-        this.currentRequestTimer = null;
-
-        // Reject the timed-out request
-        const pending = this.pendingRequests.get(requestId);
-        if (pending) {
-            this.pendingRequests.delete(requestId);
-            pending.reject(new Error(`Worker request timed out after ${this.WORKER_REQUEST_TIMEOUT_MS}ms`));
-        }
-
-        // Mark worker as not ready and trigger restart
-        this.isWorkerReady = false;
-        this.currentRequestId = null;
-
-        // Trigger worker crash handling which will restart and retry queued requests
-        console.log('[Queue] Triggering worker restart due to timeout...');
-        this.handleWorkerCrash();
-    }
-
     async validateApiKey(): Promise<boolean> {
         if (this.provider !== 'openai') {
-            // For local model, just ensure worker is ready
+            // For local model, just ensure server is ready
             if (this.initPromise) {
                 await this.initPromise;
             }
-            return this.isWorkerReady;
+            return this.isServerReady;
         }
 
         try {
@@ -561,7 +218,7 @@ export class EmbeddingService {
             });
             return true;
         } catch (error: any) {
-            if (error?.status === 401 || error?.code === 'invalid_api_key' || 
+            if (error?.status === 401 || error?.code === 'invalid_api_key' ||
                 error?.message?.includes('Incorrect API key') ||
                 error?.message?.includes('invalid_api_key')) {
                 this._isValid = false;
@@ -585,89 +242,30 @@ export class EmbeddingService {
     }
 
     private async generateLocalEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
-        // Wait for worker to be ready
+        // Wait for server to be ready
         if (this.initPromise) {
             await this.initPromise;
         }
 
-        if (!this.worker || !this.isWorkerReady) {
-            throw new Error('Embedding worker not ready');
+        if (!this.llamaServer || !this.isServerReady) {
+            throw new Error('Embedding server not ready');
         }
 
-        return new Promise((resolve, reject) => {
-            const id = `req_${++this.requestId}`;
+        try {
+            const embeddings = await this.llamaServer.embeddings(text);
 
-            // Add to queue instead of sending directly
-            const queuedRequest: QueuedRequest = {
-                id,
-                text,
-                resolve,
-                reject,
-                retried: false
+            if (!embeddings || embeddings.length === 0) {
+                throw new Error('No embedding returned from server');
+            }
+
+            return {
+                embedding: embeddings[0],
+                tokens: Math.ceil(text.length / 4)  // Rough estimate
             };
-
-            this.requestQueue.push(queuedRequest);
-            console.log(`[Queue] Added request ${id}, queue size: ${this.requestQueue.length}`);
-
-            // Start processing if not already
-            this.processNextInQueue();
-        });
-    }
-
-    /**
-     * Process the next request in the queue (one at a time)
-     */
-    private processNextInQueue(): void {
-        console.log(`[Queue] processNextInQueue called - currentRequestId: ${this.currentRequestId}, queueSize: ${this.requestQueue.length}, workerReady: ${this.isWorkerReady}`);
-
-        // Don't process if already waiting for a response
-        if (this.currentRequestId !== null) {
-            console.log(`[Queue] Already processing ${this.currentRequestId}, waiting...`);
-            return;
+        } catch (error: any) {
+            console.error('Local embedding error:', error);
+            throw new Error(`Failed to generate embedding: ${error.message}`);
         }
-
-        // Don't process if queue is empty
-        if (this.requestQueue.length === 0) {
-            console.log('[Queue] Queue empty, nothing to process');
-            return;
-        }
-
-        // Don't process if worker is not ready
-        if (!this.worker || !this.isWorkerReady) {
-            console.log('[Queue] Worker not ready, waiting...');
-            return;
-        }
-
-        // Get next request from queue
-        const queuedRequest = this.requestQueue.shift();
-        if (!queuedRequest) {
-            return;
-        }
-
-        this.currentRequestId = queuedRequest.id;
-
-        console.log(`[Queue] Processing request ${queuedRequest.id}, remaining in queue: ${this.requestQueue.length}`);
-
-        // Store in pending requests for response handling
-        this.pendingRequests.set(queuedRequest.id, {
-            resolve: queuedRequest.resolve,
-            reject: queuedRequest.reject,
-            text: queuedRequest.text,
-            retried: queuedRequest.retried
-        });
-
-        // Send request to worker
-        const request: EmbeddingRequest = {
-            id: queuedRequest.id,
-            type: 'embed',
-            text: queuedRequest.text
-        };
-
-        console.log(`[Queue] Sending request ${queuedRequest.id} to worker (text length: ${queuedRequest.text.length})`);
-        this.worker!.postMessage(request);
-
-        // Start timeout timer for this request
-        this.startRequestTimer(queuedRequest.id);
     }
 
     private async generateOpenAIEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
@@ -690,7 +288,7 @@ export class EmbeddingService {
             };
         } catch (error: any) {
             // Check for authentication errors (401)
-            if (error?.status === 401 || error?.code === 'invalid_api_key' || 
+            if (error?.status === 401 || error?.code === 'invalid_api_key' ||
                 error?.message?.includes('Incorrect API key') ||
                 error?.message?.includes('invalid_api_key')) {
                 this._isValid = false;
@@ -708,7 +306,7 @@ export class EmbeddingService {
             const result = await this.generateEmbedding(text);
             embeddings.push(result.embedding);
             totalTokens += result.tokens;
-            
+
             // Small delay to avoid rate limits (only needed for OpenAI)
             if (this.provider === 'openai') {
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -719,16 +317,11 @@ export class EmbeddingService {
     }
 }
 
-// Check if a local model is downloaded
-export function isModelDownloaded(provider: EmbeddingProvider): boolean {
+// Check if local embedding model is downloaded
+export function isModelDownloaded(provider?: EmbeddingProvider): boolean {
     if (provider === 'openai') return true; // Not applicable
-    
-    const model = LOCAL_MODELS[provider];
-    if (!model) return false;
-    
-    const cacheDir = getModelCacheDir();
-    // Check for the model directory in cache
-    // Transformers.js stores models in a specific format
-    const modelPath = path.join(cacheDir, model.huggingFaceId.replace('/', '--'));
+
+    const modelsDir = getModelCacheDir();
+    const modelPath = path.join(modelsDir, LOCAL_MODEL.filename);
     return fs.existsSync(modelPath);
 }

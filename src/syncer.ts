@@ -70,9 +70,9 @@ export class FolderSyncer {
         console.log(`Started syncing: ${this.folderPath}`);
     }
 
-    stop() {
+    async stop(): Promise<void> {
         if (this.fsWatcher) {
-            this.fsWatcher.close();
+            await this.fsWatcher.close();
             this.fsWatcher = null;
         }
         this._isSyncing = false;
