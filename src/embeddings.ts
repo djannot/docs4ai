@@ -161,7 +161,7 @@ export class EmbeddingService {
         await this.llamaServer.start({
             modelPath,
             port: EMBEDDING_SERVER_PORT,
-            contextSize: 512,  // Embeddings don't need large context
+            contextSize: 2048,  // Increased for longer texts
             threads: 4,
             embedding: true    // Enable embedding mode
         }, progressCallback);

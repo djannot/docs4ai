@@ -504,6 +504,10 @@ export class LlamaServer {
             model: 'default'
         });
 
+        if (!response.data || !Array.isArray(response.data)) {
+            throw new Error(`Invalid embedding response: ${JSON.stringify(response)}`);
+        }
+
         return response.data.map((item: any) => item.embedding);
     }
 
