@@ -106,6 +106,7 @@ export class McpServer {
         this.sessionCleanupInterval = setInterval(() => {
             this.cleanupExpiredSessions();
         }, SESSION_CLEANUP_INTERVAL_MS);
+        this.sessionCleanupInterval.unref();
     }
 
     /**

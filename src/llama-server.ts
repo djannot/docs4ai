@@ -354,6 +354,7 @@ export class LlamaServer {
                     reject(new Error('Server startup timeout'));
                 }
             }, 60000); // 60 second timeout
+            timeout.unref();
 
             this.process.stdout?.on('data', (data: Buffer) => {
                 const output = data.toString();
@@ -418,6 +419,7 @@ export class LlamaServer {
                     }
                     resolve();
                 }, 5000);
+                timeout.unref();
 
                 if (this.process) {
                     this.process.on('exit', () => {

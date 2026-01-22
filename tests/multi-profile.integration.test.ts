@@ -199,8 +199,8 @@ Key metrics to track:
 
   afterAll(async () => {
     // Stop all syncers
-    if (profile1Syncer) profile1Syncer.stop();
-    if (profile2Syncer) profile2Syncer.stop();
+    if (profile1Syncer) await profile1Syncer.stop();
+    if (profile2Syncer) await profile2Syncer.stop();
 
     // Stop all MCP servers
     if (profile1McpServer) await profile1McpServer.stop();

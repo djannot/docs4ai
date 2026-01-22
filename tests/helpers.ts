@@ -16,11 +16,15 @@ export interface TestFile {
   content: string;
 }
 
+const workerId = process.env.JEST_WORKER_ID || '0';
+const tempRoot = path.join(__dirname, `temp-${workerId}`);
+const dbRoot = path.join(__dirname, `test-dbs-${workerId}`);
+
 /**
  * Creates a temporary directory for testing
  */
 export function createTempDir(prefix: string = 'test'): string {
-  const testDir = path.join(__dirname, 'temp', `${prefix}-${randomUUID()}`);
+  const testDir = path.join(tempRoot, `${prefix}-${randomUUID()}`);
   fs.mkdirSync(testDir, { recursive: true });
   return testDir;
 }
@@ -49,7 +53,7 @@ export function createSubDirWithFiles(parentDir: string, subDirName: string, fil
  * Creates a test database path
  */
 export function createTestDbPath(profileName: string): string {
-  const dbDir = path.join(__dirname, 'test-dbs');
+  const dbDir = dbRoot;
   fs.mkdirSync(dbDir, { recursive: true });
   return path.join(dbDir, `${profileName}-${randomUUID()}.db`);
 }
