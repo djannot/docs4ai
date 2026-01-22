@@ -11,6 +11,7 @@ export interface LlamaServerConfig {
     contextSize?: number;
     gpuLayers?: number;
     threads?: number;
+    embedding?: boolean;  // Enable embedding mode
 }
 
 export interface ChatMessage {
@@ -304,6 +305,11 @@ export class LlamaServer {
             args.push('--n-gpu-layers', config.gpuLayers.toString());
         }
 
+        // Enable embedding mode for embedding models
+        if (config.embedding) {
+            args.push('--embedding');
+        }
+
         console.log(`[LlamaServer] Starting: ${binaryPath} ${args.join(' ')}`);
         onProgress?.({ status: 'downloading', file: 'Starting server...' });
 
@@ -539,9 +545,22 @@ export class LlamaServer {
     }
 }
 
-// Default model configuration for Qwen3
-export const QWEN3_MODEL = {
+// Default model configuration for Qwen3 Chat
+export const QWEN3_CHAT_MODEL = {
     repoId: 'Qwen/Qwen3-1.7B-GGUF',
     filename: 'Qwen3-1.7B-Q8_0.gguf',
-    name: 'Qwen3 1.7B'
+    name: 'Qwen3 1.7B',
+    type: 'chat' as const
 };
+
+// Default model configuration for Qwen3 Embeddings
+export const QWEN3_EMBEDDING_MODEL = {
+    repoId: 'Qwen/Qwen3-Embedding-0.6B-GGUF',
+    filename: 'Qwen3-Embedding-0.6B-Q8_0.gguf',
+    name: 'Qwen3 Embedding 0.6B',
+    type: 'embedding' as const,
+    dimension: 1024  // Qwen3 embedding dimension
+};
+
+// Legacy alias for backward compatibility
+export const QWEN3_MODEL = QWEN3_CHAT_MODEL;

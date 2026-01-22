@@ -1,6 +1,6 @@
 import * as path from 'path';
 import OpenAI from 'openai';
-import { LlamaServer, QWEN3_MODEL, ModelDownloadProgress } from './llama-server';
+import { LlamaServer, QWEN3_CHAT_MODEL, ModelDownloadProgress } from './llama-server';
 
 // LLM Provider types
 export type LLMProvider = 'local-qwen3' | 'openai';
@@ -166,20 +166,20 @@ export class LLMChatService {
 
         // Get model path
         const modelsDir = this.llamaServer.getModelsDir();
-        const modelPath = path.join(modelsDir, QWEN3_MODEL.filename);
+        const modelPath = path.join(modelsDir, QWEN3_CHAT_MODEL.filename);
 
         // Download model if not present
         if (!this.llamaServer.modelExists(modelPath)) {
-            console.log(`[LLMChat] Downloading model ${QWEN3_MODEL.name}...`);
+            console.log(`[LLMChat] Downloading model ${QWEN3_CHAT_MODEL.name}...`);
             this.downloadProgressCallback?.({
                 status: 'downloading',
-                file: QWEN3_MODEL.filename,
+                file: QWEN3_CHAT_MODEL.filename,
                 progress: 0
             });
 
             await this.llamaServer.downloadModel(
-                QWEN3_MODEL.repoId,
-                QWEN3_MODEL.filename,
+                QWEN3_CHAT_MODEL.repoId,
+                QWEN3_CHAT_MODEL.filename,
                 modelPath,
                 (progress) => {
                     this.downloadProgressCallback?.(progress);
@@ -188,7 +188,7 @@ export class LLMChatService {
         }
 
         // Start llama-server
-        console.log(`[LLMChat] Starting llama-server with model ${QWEN3_MODEL.name}...`);
+        console.log(`[LLMChat] Starting llama-server with model ${QWEN3_CHAT_MODEL.name}...`);
         await this.llamaServer.start({
             modelPath,
             port: LLAMA_SERVER_PORT,
