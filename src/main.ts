@@ -12,12 +12,10 @@ import { LLMChatService, LLMProvider, ChatMessage, MCP_TOOLS, executeMcpToolCall
 
 // Helper to migrate old provider values to current ones
 function migrateEmbeddingProvider(provider: string | undefined): EmbeddingProvider {
-    if (!provider || provider === 'local') {
-        return 'local-minilm';
-    }
-    // Migrate old 'local-qwen' to 'local-e5' (Qwen was not compatible with transformers.js)
-    if (provider === 'local-qwen') {
-        return 'local-e5';
+    // All local providers now map to 'local' (Qwen3 via llama-server)
+    if (!provider || provider === 'local' || provider === 'local-minilm' ||
+        provider === 'local-e5' || provider === 'local' || provider === 'local-qwen') {
+        return 'local';
     }
     return provider as EmbeddingProvider;
 }
@@ -32,7 +30,7 @@ interface ProfileSettings {
     recursive: boolean;
     mcpServerEnabled: boolean;
     mcpServerPort: number;
-    embeddingProvider: EmbeddingProvider;  // 'local-minilm', 'local-e5', 'local-e5-large', or 'openai'
+    embeddingProvider: EmbeddingProvider;  // 'local' or 'openai'
 }
 
 interface AppSettings {
@@ -428,7 +426,7 @@ function setupIpcHandlers() {
                 recursive: true,
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
-                embeddingProvider: 'local-e5-large'  // Default to local embeddings
+                embeddingProvider: 'local'  // Default to local embeddings
             };
             
             console.log('[IPC] Created profile object:', newProfile);
@@ -801,7 +799,7 @@ function setupIpcHandlers() {
             totalChunks,
             totalTokens,
             totalCost,
-            embeddingProvider: profile?.embeddingProvider || 'local-e5-large'
+            embeddingProvider: profile?.embeddingProvider || 'local'
         };
     });
 
@@ -1749,7 +1747,7 @@ function sendStats(profileId?: string) {
             totalChunks,
             totalTokens,
             totalCost,
-            embeddingProvider: profile?.embeddingProvider || 'local-e5-large',
+            embeddingProvider: profile?.embeddingProvider || 'local',
             syncProgress: state ? {
                 filesProcessed: state.filesProcessed || 0,
                 totalFiles: state.totalFilesToSync || 0

@@ -1746,13 +1746,11 @@
                         <div class="input-group">
                             <label for="embeddingProvider-${profile.id}">${t('ui.embeddingProvider')}:</label>
                             <select id="embeddingProvider-${profile.id}" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
-                                <option value="local-minilm" ${profile.embeddingProvider === 'local-minilm' ? 'selected' : ''}>${t('ui.localMinilm')} (${t('ui.free')})</option>
-                                <option value="local-e5" ${profile.embeddingProvider === 'local-e5' || profile.embeddingProvider === 'local-qwen' ? 'selected' : ''}>${t('ui.localE5')} (${t('ui.free')})</option>
-                                <option value="local-e5-large" ${(profile.embeddingProvider || 'local-e5-large') === 'local-e5-large' ? 'selected' : ''}>${t('ui.localE5Large')} (${t('ui.free')})</option>
+                                <option value="local" ${(profile.embeddingProvider || 'local') !== 'openai' ? 'selected' : ''}>${t('ui.localQwen3')} (${t('ui.free')})</option>
                                 <option value="openai" ${profile.embeddingProvider === 'openai' ? 'selected' : ''}>${t('ui.openaiEmbeddings')} (${t('ui.paid')})</option>
                             </select>
                             <div class="model-description" id="modelDescription-${profile.id}" style="margin-top: 6px; font-size: 12px; color: #666;">
-                                ${getModelDescription(profile.embeddingProvider || 'local-e5-large')}
+                                ${getModelDescription(profile.embeddingProvider || 'local')}
                             </div>
                         </div>
                         
@@ -1890,7 +1888,7 @@
                 embeddingProviderSelect.addEventListener('change', async (e) => {
                     const newProvider = embeddingProviderSelect.value;
                     const profile = profiles.find(p => p.id === profileId);
-                    const oldProvider = profile?.embeddingProvider || 'local-e5-large';
+                    const oldProvider = profile?.embeddingProvider || 'local';
                     
                     // If provider actually changed, warn user about database reset
                     if (oldProvider !== newProvider) {
@@ -2049,7 +2047,7 @@
             const newDatabasePath = (dbPathEl.textContent === t('ui.noDatabaseSelected')) ? '' : dbPathEl.textContent;
             const newApiKey = document.getElementById(`apiKey-${profileId}`).value;
             const newRecursive = document.getElementById(`recursive-${profileId}`).checked;
-            const newEmbeddingProvider = embeddingProviderEl?.value || 'local-e5-large';
+            const newEmbeddingProvider = embeddingProviderEl?.value || 'local';
 
             // Only send fields that actually changed to avoid triggering unnecessary worker restarts
             const updates = {};
@@ -2225,7 +2223,7 @@
         function updateApiKeyWarning(profileId) {
             if (profileId !== activeProfileId) return;
             
-            const embeddingProvider = document.getElementById(`embeddingProvider-${profileId}`)?.value || 'local-e5-large';
+            const embeddingProvider = document.getElementById(`embeddingProvider-${profileId}`)?.value || 'local';
             const apiKey = document.getElementById(`apiKey-${profileId}`)?.value || '';
             const hasApiKey = apiKey && apiKey.trim().length > 0;
             const warning = document.getElementById(`apiKeyWarning-${profileId}`);
@@ -3271,13 +3269,15 @@
         // Simple translation function
         function getModelDescription(provider) {
             const descriptions = {
-                'local-minilm': t('ui.minilmDescription'),
-                'local-e5': t('ui.e5Description'),
-                'local-e5-large': t('ui.e5LargeDescription'),
-                'local-qwen': t('ui.e5Description'), // Fallback for old provider
+                'local': t('ui.qwen3Description'),
+                // Legacy providers map to local description
+                'local-minilm': t('ui.qwen3Description'),
+                'local-e5': t('ui.qwen3Description'),
+                'local-e5-large': t('ui.qwen3Description'),
+                'local-qwen': t('ui.qwen3Description'),
                 'openai': t('ui.openaiDescription')
             };
-            return descriptions[provider] || '';
+            return descriptions[provider] || t('ui.qwen3Description');
         }
 
         function t(key, options = {}) {

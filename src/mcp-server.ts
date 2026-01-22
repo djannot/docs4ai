@@ -49,7 +49,7 @@ export class McpServer {
     private dbPath: string | null = null;
     private db: Database.Database | null = null; // Cached database connection
     private openaiApiKey: string | null = null;
-    private embeddingProvider: EmbeddingProvider = 'local-e5-large';
+    private embeddingProvider: EmbeddingProvider = 'local';
     private embeddingService: EmbeddingService | null = null;
     private port: number;
     private sessions: Map<string, SessionData> = new Map();
