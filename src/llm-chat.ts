@@ -118,20 +118,24 @@ export class LLMChatService {
     private provider: LLMProvider;
     private openaiClient: OpenAI | null = null;
     private openaiApiKey: string | null = null;
-    private openaiModel: string = 'gpt-4o-mini';
+    private openaiModel: string = 'gpt-5-mini';
     private llamaServer: LlamaServer | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private isTerminating: boolean = false;
+    private contextLength: number;
 
-    constructor(provider: LLMProvider, apiKey?: string, model?: string) {
+    constructor(provider: LLMProvider, apiKey?: string, model?: string, contextLength?: number) {
         this.provider = provider;
+        
+        // Set context length (default: 8192)
+        this.contextLength = contextLength ?? 8192;
 
         if (provider === 'openai') {
             if (!apiKey) {
                 throw new Error('OpenAI API key is required for OpenAI provider');
             }
             this.openaiApiKey = apiKey;
-            this.openaiModel = model || 'gpt-4o-mini';
+            this.openaiModel = model || 'gpt-5-mini';
             this.openaiClient = new OpenAI({ apiKey });
         } else {
             // Create LlamaServer instance for local provider
@@ -192,7 +196,7 @@ export class LLMChatService {
         await this.llamaServer.start({
             modelPath,
             port: LLAMA_SERVER_PORT,
-            contextSize: 4096,
+            contextSize: this.contextLength,  // Use configured context length
             threads: 4
         }, (progress) => {
             this.downloadProgressCallback?.(progress);
@@ -236,9 +240,18 @@ export class LLMChatService {
             const requestParams: any = {
                 model: this.openaiModel,
                 messages,
-                temperature: options.temperature ?? 0.7,
-                max_tokens: options.maxTokens ?? 2048
+                temperature: options.temperature ?? 1.0,
             };
+
+            // Use appropriate token limit parameter based on model
+            // Newer models (gpt-4o, gpt-5, etc.) use max_completion_tokens
+            // Older models (gpt-4-turbo, gpt-3.5-turbo) use max_tokens
+            const isNewModel = this.openaiModel.startsWith('gpt-4') || this.openaiModel.startsWith('gpt-5') || this.openaiModel.startsWith('gpt-o1');
+            if (isNewModel) {
+                requestParams.max_completion_tokens = options.maxTokens ?? 2048;
+            } else {
+                requestParams.max_tokens = options.maxTokens ?? 2048;
+            }
 
             if (options.tools && options.tools.length > 0) {
                 requestParams.tools = options.tools;

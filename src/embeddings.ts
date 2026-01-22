@@ -88,14 +88,18 @@ export class EmbeddingService {
     private modelConfig: LocalModelConfig | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private isServerReady = false;
+    private contextLength: number;
 
-    constructor(provider: EmbeddingProvider = 'local', apiKey?: string) {
+    constructor(provider: EmbeddingProvider = 'local', apiKey?: string, contextLength?: number) {
         // Normalize legacy providers to new simplified providers
         if (provider === 'local-minilm' || provider === 'local-e5' || provider === 'local-e5-large') {
             this.provider = 'local';
         } else {
             this.provider = provider;
         }
+
+        // Set context length (default: 8192)
+        this.contextLength = contextLength ?? 8192;
 
         if (this.provider === 'openai') {
             if (!apiKey) {
@@ -161,7 +165,7 @@ export class EmbeddingService {
         await this.llamaServer.start({
             modelPath,
             port: EMBEDDING_SERVER_PORT,
-            contextSize: 2048,  // Increased for longer texts
+            contextSize: this.contextLength,  // Use configured context length
             threads: 4,
             embedding: true    // Enable embedding mode
         }, progressCallback);

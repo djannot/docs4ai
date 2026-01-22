@@ -51,6 +51,7 @@ export class McpServer {
     private openaiApiKey: string | null = null;
     private embeddingProvider: EmbeddingProvider = 'local';
     private embeddingService: EmbeddingService | null = null;
+    private embeddingContextLength: number = 2048;
     private port: number;
     private sessions: Map<string, SessionData> = new Map();
     private sessionCleanupInterval: NodeJS.Timeout | null = null;
@@ -58,8 +59,9 @@ export class McpServer {
     private isStopping = false; // Prevent multiple concurrent stop calls
     private stopPromise: Promise<void> | null = null;
 
-    constructor(port: number = 3333) {
+    constructor(port: number = 3333, embeddingContextLength?: number) {
         this.port = port;
+        this.embeddingContextLength = embeddingContextLength ?? 8192;
         this.app = express();
         this.app.use(express.json());
         this.setupRoutes();
@@ -195,10 +197,10 @@ export class McpServer {
         }
 
         if (this.embeddingProvider === 'openai' && this.openaiApiKey) {
-            this.embeddingService = new EmbeddingService('openai', this.openaiApiKey);
+            this.embeddingService = new EmbeddingService('openai', this.openaiApiKey, this.embeddingContextLength);
         } else {
             // Use the specified local model
-            this.embeddingService = new EmbeddingService(this.embeddingProvider);
+            this.embeddingService = new EmbeddingService(this.embeddingProvider, undefined, this.embeddingContextLength);
             await this.embeddingService.validateApiKey(); // Ensures model is loaded
         }
 

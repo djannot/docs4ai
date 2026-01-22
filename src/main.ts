@@ -31,6 +31,10 @@ interface ProfileSettings {
     mcpServerEnabled: boolean;
     mcpServerPort: number;
     embeddingProvider: EmbeddingProvider;  // 'local' or 'openai'
+    embeddingContextLength?: number;  // Context length for local embedding model (default: 8192)
+    llmContextLength?: number;  // Context length for local LLM chat model (default: 8192)
+    llmChatApiKey?: string;  // OpenAI API key for LLM chat (separate from embeddings)
+    llmChatModel?: string;  // OpenAI model for LLM chat (default: 'gpt-4o-mini')
 }
 
 interface AppSettings {
@@ -498,15 +502,16 @@ function setupIpcHandlers() {
         store.store = appSettings;
         
         // Update embedding service if provider or API key changed
+        // Note: embeddingContextLength changes don't trigger reload - the new value will be used next time sync starts
         const state = profileStates.get(profileId);
         if (state) {
             const profile = appSettings.profiles![profileIndex];
             if (updates.embeddingProvider !== undefined || updates.openAIApiKey !== undefined) {
                 // Recreate embedding service with new settings
                 if (profile.embeddingProvider === 'openai' && profile.openAIApiKey) {
-                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey);
+                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey, profile.embeddingContextLength);
                 } else {
-                    state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider));
+                    state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider), undefined, profile.embeddingContextLength);
                 }
             }
             
@@ -613,7 +618,7 @@ function setupIpcHandlers() {
             }
 
             // Create and start new server
-            state.mcpServer = new McpServer(port);
+            state.mcpServer = new McpServer(port, profile.embeddingContextLength);
             state.mcpServer.setDatabase(dbPath);
             state.mcpServer.setApiKey(apiKey);
             state.mcpServer.setEmbeddingProvider(embeddingProvider);
@@ -1073,7 +1078,7 @@ function setupIpcHandlers() {
                 }
 
                 // Create and start MCP server
-                state.mcpServer = new McpServer(port);
+                state.mcpServer = new McpServer(port, profile.embeddingContextLength);
                 state.mcpServer.setDatabase(profile.databasePath);
                 state.mcpServer.setApiKey(profile.openAIApiKey || null);
                 state.mcpServer.setEmbeddingProvider(embeddingProvider);
@@ -1115,7 +1120,7 @@ function setupIpcHandlers() {
 
             // Create LLM chat service
             if (!state.llmChatService) {
-                state.llmChatService = new LLMChatService(llmProvider, openaiApiKey, openaiModel);
+                state.llmChatService = new LLMChatService(llmProvider, openaiApiKey, openaiModel, profile.llmContextLength);
 
                 // Set up download progress callback for local model
                 if (llmProvider === 'local-qwen3') {
@@ -1366,7 +1371,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
 
         // Initialize embedding service
         if (embeddingProvider === 'openai') {
-            state.embeddingService = new EmbeddingService('openai', openAIApiKey);
+            state.embeddingService = new EmbeddingService('openai', openAIApiKey, profile.embeddingContextLength);
             
             // Validate API key before starting sync
             console.log(`[${profile.name}] Validating OpenAI API key...`);
@@ -1385,7 +1390,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             // Use local embeddings
             const modelConfig = LOCAL_MODELS[embeddingProvider];
             console.log(`[${profile.name}] Using local embedding model: ${modelConfig?.name || embeddingProvider}...`);
-            state.embeddingService = new EmbeddingService(embeddingProvider);
+            state.embeddingService = new EmbeddingService(embeddingProvider, undefined, profile.embeddingContextLength);
             
             // Set up download progress callback to notify UI
             state.embeddingService.setDownloadProgressCallback((progress) => {

@@ -931,7 +931,7 @@
             <div class="input-group">
                 <label for="llmProvider" data-i18n="chat.llmProvider">LLM Provider:</label>
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
-                    <option value="openai" data-i18n="chat.openaiOption">OpenAI (gpt-4o-mini)</option>
+                    <option value="openai" data-i18n="chat.openaiOption">OpenAI</option>
                     <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local Qwen3 (1.7B, ~1GB)</option>
                 </select>
                 <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
@@ -943,6 +943,18 @@
                 <label for="chatApiKey" data-i18n="chat.apiKeyLabel">OpenAI API Key:</label>
                 <input type="password" id="chatApiKey" placeholder="sk-...">
                 <div class="info" data-i18n="chat.apiKeySameInfo">Same key used for embeddings can be used here.</div>
+            </div>
+
+            <div class="input-group" id="chatModelGroup" style="display: block;">
+                <label for="chatModel" data-i18n="chat.modelLabel">OpenAI Model:</label>
+                <input type="text" id="chatModel" value="gpt-5-mini" placeholder="gpt-5-mini" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                <div class="info" data-i18n="chat.modelInfo">Enter the OpenAI model to use for chat.</div>
+            </div>
+
+            <div class="input-group" id="llmContextLengthGroup" style="display: none;">
+                <label for="llmContextLength-chat" data-i18n="chat.llmContextLength">LLM Context Length:</label>
+                <input type="number" id="llmContextLength-chat" value="8192" min="512" max="32768" step="512" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                <div class="info" data-i18n="chat.llmContextLengthInfo">Maximum context length for the local LLM model. Higher values use more memory.</div>
             </div>
 
             <div class="input-group" id="llmDownloadProgress" style="display: none;">
@@ -1356,6 +1368,7 @@
             
             renderTabs();
             await renderActiveProfile();
+            syncLlmChatSettingsFromProfile();
             
             // Get initial stats for all profiles
             for (const profile of profiles) {
@@ -1569,6 +1582,7 @@
             await window.api.setActiveProfile(profileId);
             renderTabs();
             await renderActiveProfile();
+            syncLlmChatSettingsFromProfile();
         }
 
         function populateExtensionCheckboxes(profileId, selectedExtensions) {
@@ -1759,6 +1773,12 @@
                             <input type="password" id="apiKey-${profile.id}" value="${escapeHtml(profile.openAIApiKey || '')}" placeholder="sk-...">
                         </div>
 
+                        <div class="input-group" id="embeddingContextLengthGroup-${profile.id}" style="display: ${(profile.embeddingProvider || 'local') !== 'openai' ? 'block' : 'none'};">
+                            <label for="embeddingContextLength-${profile.id}">${t('ui.embeddingContextLength')}:</label>
+                            <input type="number" id="embeddingContextLength-${profile.id}" value="${profile.embeddingContextLength || 8192}" min="512" max="32768" step="512" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px;">
+                            <div style="margin-top: 6px; font-size: 12px; color: #666;">${t('ui.embeddingContextLengthInfo')}</div>
+                        </div>
+
                         <div class="info" id="embeddingInfo-${profile.id}">${profile.embeddingProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo')}</div>
                         <div class="warning" id="apiKeyWarning-${profile.id}" style="display: none;">
                             ${t('ui.apiKeyRequired')}
@@ -1884,6 +1904,12 @@
                 recursiveInput.addEventListener('change', () => saveProfileSettings(profileId));
             }
             
+            // Add listener for embedding context length
+            const embeddingContextLengthInput = document.getElementById(`embeddingContextLength-${profileId}`);
+            if (embeddingContextLengthInput) {
+                embeddingContextLengthInput.addEventListener('change', () => saveProfileSettings(profileId));
+            }
+            
             if (embeddingProviderSelect) {
                 embeddingProviderSelect.addEventListener('change', async (e) => {
                     const newProvider = embeddingProviderSelect.value;
@@ -1944,6 +1970,7 @@
                     }
                     
                     const apiKeyGroup = document.getElementById(`apiKeyGroup-${profileId}`);
+                    const embeddingContextLengthGroup = document.getElementById(`embeddingContextLengthGroup-${profileId}`);
                     const embeddingInfo = document.getElementById(`embeddingInfo-${profileId}`);
                     const tokensRow = document.getElementById(`tokensRow-${profileId}`);
                     const costRow = document.getElementById(`costRow-${profileId}`);
@@ -1951,6 +1978,9 @@
                     
                     if (apiKeyGroup) {
                         apiKeyGroup.style.display = newProvider === 'openai' ? 'block' : 'none';
+                    }
+                    if (embeddingContextLengthGroup) {
+                        embeddingContextLengthGroup.style.display = newProvider === 'openai' ? 'none' : 'block';
                     }
                     if (embeddingInfo) {
                         embeddingInfo.textContent = newProvider === 'openai' ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo');
@@ -2048,6 +2078,7 @@
             const newApiKey = document.getElementById(`apiKey-${profileId}`).value;
             const newRecursive = document.getElementById(`recursive-${profileId}`).checked;
             const newEmbeddingProvider = embeddingProviderEl?.value || 'local';
+            const newEmbeddingContextLength = parseInt(document.getElementById(`embeddingContextLength-${profileId}`)?.value) || 8192;
 
             // Only send fields that actually changed to avoid triggering unnecessary worker restarts
             const updates = {};
@@ -2058,6 +2089,7 @@
             if (selectedExtensions !== profile.fileExtensions) updates.fileExtensions = selectedExtensions;
             if (newRecursive !== profile.recursive) updates.recursive = newRecursive;
             if (newEmbeddingProvider !== profile.embeddingProvider) updates.embeddingProvider = newEmbeddingProvider;
+            if (newEmbeddingContextLength !== profile.embeddingContextLength) updates.embeddingContextLength = newEmbeddingContextLength;
 
             // Only call API if there are actual changes
             if (Object.keys(updates).length > 0) {
@@ -2574,6 +2606,27 @@
         let chatMessages = []; // Store conversation history
         let chatIsProcessing = false;
 
+        // Save chat settings to profile
+        async function saveChatSettings() {
+            if (!activeProfileId) return;
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile) return;
+
+            const chatApiKey = document.getElementById('chatApiKey').value;
+            const chatModel = document.getElementById('chatModel').value;
+            const llmContextLength = parseInt(document.getElementById('llmContextLength-chat')?.value) || 8192;
+
+            const updates = {};
+            if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
+            if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
+            if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;
+
+            if (Object.keys(updates).length > 0) {
+                await window.api.updateProfile(activeProfileId, updates);
+                Object.assign(profile, updates);
+            }
+        }
+
         // Set up LLM provider change listener
         function setupLlmProviderListener() {
             const providerSelect = document.getElementById('llmProvider');
@@ -2581,25 +2634,64 @@
                 providerSelect.addEventListener('change', (e) => {
                     const provider = e.target.value;
                     const apiKeyGroup = document.getElementById('chatApiKeyGroup');
+                    const chatModelGroup = document.getElementById('chatModelGroup');
+                    const llmContextLengthGroup = document.getElementById('llmContextLengthGroup');
                     const infoEl = document.getElementById('llmProviderInfo');
 
                     if (provider === 'openai') {
                         apiKeyGroup.style.display = 'block';
+                        chatModelGroup.style.display = 'block';
+                        llmContextLengthGroup.style.display = 'none';
                         infoEl.textContent = t('chat.openaiInfo');
                     } else {
                         apiKeyGroup.style.display = 'none';
+                        chatModelGroup.style.display = 'none';
+                        llmContextLengthGroup.style.display = 'block';
                         infoEl.textContent = t('chat.localInfo');
                     }
                 });
             }
+
+            // Set up event listeners for chat settings
+            const chatApiKey = document.getElementById('chatApiKey');
+            if (chatApiKey) {
+                chatApiKey.addEventListener('change', saveChatSettings);
+            }
+
+            const chatModel = document.getElementById('chatModel');
+            if (chatModel) {
+                chatModel.addEventListener('change', saveChatSettings);
+            }
+
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            if (llmContextLengthInput) {
+                llmContextLengthInput.addEventListener('change', saveChatSettings);
+            }
         }
 
-        // Copy API key from embeddings settings if available
-        function syncApiKeyFromEmbeddings() {
+        // Sync LLM chat settings from active profile
+        function syncLlmChatSettingsFromProfile() {
+            if (!activeProfileId) return;
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile) return;
+            
+            // Sync API key
             const chatApiKey = document.getElementById('chatApiKey');
-            const embeddingApiKey = document.getElementById(`apiKey-${activeProfileId}`);
-            if (chatApiKey && embeddingApiKey && embeddingApiKey.value && !chatApiKey.value) {
-                chatApiKey.value = embeddingApiKey.value;
+            if (chatApiKey) {
+                // Use saved LLM chat API key, fallback to embedding API key if available
+                chatApiKey.value = profile.llmChatApiKey || profile.openAIApiKey || '';
+            }
+            
+            // Sync model
+            const chatModel = document.getElementById('chatModel');
+            if (chatModel) {
+                chatModel.value = profile.llmChatModel || 'gpt-5-mini';
+            }
+            
+            // Sync context length
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            if (llmContextLengthInput) {
+                llmContextLengthInput.value = profile.llmContextLength || 8192;
             }
         }
 
@@ -2615,15 +2707,26 @@
                 return;
             }
 
-            // Sync API key from embeddings
-            syncApiKeyFromEmbeddings();
-
             const llmProvider = document.getElementById('llmProvider').value;
             const chatApiKey = document.getElementById('chatApiKey').value;
+            const chatModel = document.getElementById('chatModel').value;
+            const llmContextLengthInput = document.getElementById('llmContextLength-chat');
+            const llmContextLength = parseInt(llmContextLengthInput?.value) || 8192;
 
             if (llmProvider === 'openai' && !chatApiKey) {
                 alert(t('chat.apiKeyRequired'));
                 return;
+            }
+
+            // Save LLM chat settings to profile if changed
+            const updates = {};
+            if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
+            if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
+            if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;
+            
+            if (Object.keys(updates).length > 0) {
+                await window.api.updateProfile(activeProfileId, updates);
+                Object.assign(profile, updates);
             }
 
             // For local models, show download progress and wait for model to be ready
@@ -2637,7 +2740,7 @@
             }
 
             // Start chat session (this will download model if needed)
-            const success = await startChatSession(llmProvider, chatApiKey);
+            const success = await startChatSession(llmProvider, chatApiKey, chatModel);
 
             // Reset button state
             const openBtn = document.getElementById('openChatBtn');
@@ -2673,7 +2776,7 @@
             updateChatStatus(t('chat.notConnected'));
         }
 
-        async function startChatSession(llmProvider, apiKey) {
+        async function startChatSession(llmProvider, apiKey, model) {
             const statusEl = document.getElementById('chatStatusIndicator');
             statusEl.textContent = t('chat.searchingDocuments').replace('...', '');
             statusEl.style.color = '#ff9500';
@@ -2683,7 +2786,7 @@
                     activeProfileId,
                     llmProvider,
                     apiKey,
-                    'gpt-4o-mini'
+                    model || 'gpt-5-mini'
                 );
 
                 if (result.success) {
@@ -2769,13 +2872,14 @@
             try {
                 const llmProvider = document.getElementById('llmProvider').value;
                 const chatApiKey = document.getElementById('chatApiKey').value;
+                const chatModel = document.getElementById('chatModel').value;
 
                 const result = await window.api.sendChatMessage({
                     profileId: activeProfileId,
                     messages: chatMessages,
                     llmProvider,
                     openaiApiKey: chatApiKey,
-                    openaiModel: 'gpt-4o-mini',
+                    openaiModel: chatModel || 'gpt-5-mini',
                     enableTools: true
                 });
 
