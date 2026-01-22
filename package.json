@@ -16,7 +16,6 @@
     "package:mac": "npm run build && electron-builder --mac",
     "package:win": "npm run build && electron-builder --win",
     "package:linux": "npm run build && electron-builder --linux",
-    "download-llama": "bash scripts/download-llama-server.sh",
     "test": "npm run rebuild:node && npm run build && jest",
     "test:watch": "npm run rebuild:node && npm run build && jest --watch",
     "test:coverage": "npm run rebuild:node && npm run build && jest --coverage"
@@ -32,13 +31,6 @@
       "src/index.html",
       "node_modules/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "bin/${platform}/${arch}/",
-        "to": "bin/${platform}/${arch}/",
-        "filter": ["**/*"]
-      }
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -73,6 +65,7 @@
     "express": "^4.21.0",
     "i18next": "^25.7.4",
     "i18next-fs-backend": "^2.6.1",
+    "node-llama-cpp": "^3.15.0",
     "openai": "^4.77.0",
     "sanitize-html": "^2.13.0",
     "sqlite-vec": "^0.1.6",

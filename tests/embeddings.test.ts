@@ -1,8 +1,6 @@
 import { EmbeddingService, getEmbeddingDimension, MINILM_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION } from '../src/embeddings';
 
 const openAiCreateMock = jest.fn();
-const startMock = jest.fn();
-const embeddingsMock = jest.fn();
 
 jest.mock('openai', () => ({
   __esModule: true,
@@ -12,31 +10,9 @@ jest.mock('openai', () => ({
   }
 }));
 
-jest.mock('../src/llama-server', () => ({
-  __esModule: true,
-  LlamaServer: jest.fn(() => ({
-    modelExists: jest.fn(() => true),
-    downloadModel: jest.fn(),
-    start: startMock,
-    embeddings: embeddingsMock,
-    stop: jest.fn()
-  })),
-  QWEN3_EMBEDDING_MODEL: {
-    repoId: 'mock',
-    filename: 'mock.gguf',
-    name: 'Mock Qwen3',
-    type: 'embedding',
-    dimension: 1024
-  }
-}));
-
 describe('EmbeddingService', () => {
   beforeEach(() => {
     openAiCreateMock.mockReset();
-    startMock.mockReset();
-    embeddingsMock.mockReset();
-    startMock.mockResolvedValue(undefined);
-    embeddingsMock.mockResolvedValue([[0, 0, 0]]);
   });
 
   it('returns expected dimensions for providers', () => {
@@ -61,9 +37,18 @@ describe('EmbeddingService', () => {
   });
 
   it('bubbles local model startup failures', async () => {
-    startMock.mockRejectedValueOnce(new Error('startup failed'));
-    const service = new EmbeddingService('local');
+    const originalMock = (globalThis as any).__docs4aiNodeLlamaMock;
+    (globalThis as any).__docs4aiNodeLlamaMock = {
+      ...originalMock,
+      getLlama: async () => {
+        throw new Error('startup failed');
+      }
+    };
 
+    const service = new EmbeddingService('local');
     await expect(service.validateApiKey()).rejects.toThrow('startup failed');
+    await service.terminate();
+
+    (globalThis as any).__docs4aiNodeLlamaMock = originalMock;
   });
 });

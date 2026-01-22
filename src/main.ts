@@ -35,6 +35,7 @@ interface ProfileSettings {
     llmContextLength?: number;  // Context length for local LLM chat model (default: 8192)
     llmChatApiKey?: string;  // OpenAI API key for LLM chat (separate from embeddings)
     llmChatModel?: string;  // OpenAI model for LLM chat (default: 'gpt-4o-mini')
+    llmProvider?: LLMProvider;  // 'openai' or 'local-qwen3'
 }
 
 interface AppSettings {
@@ -74,6 +75,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let profileStates: Map<string, ProfileState> = new Map();
 let isQuitting = false;
+let isQuittingCleanup = false;
 let syncCancelled: Map<string, boolean> = new Map();
 
 // Track which ports are in use by which profiles
@@ -430,7 +432,8 @@ function setupIpcHandlers() {
                 recursive: true,
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
-                embeddingProvider: 'local'  // Default to local embeddings
+                embeddingProvider: 'local',  // Default to local embeddings
+                llmProvider: 'openai'
             };
             
             console.log('[IPC] Created profile object:', newProfile);
@@ -1213,7 +1216,8 @@ function setupIpcHandlers() {
             const chatOptions: any = {
                 messages,
                 temperature,
-                maxTokens
+                maxTokens,
+                mcpServerPort: mcpPort
             };
 
             // Add tools if enabled and MCP server is running
@@ -1228,7 +1232,8 @@ function setupIpcHandlers() {
             const maxToolCalls = 5; // Prevent infinite loops
             let toolCallCount = 0;
             const conversationMessages = [...messages];
-            const executedToolCalls: Array<{ name: string; arguments: any; response: any }> = [];
+            const executedToolCalls: Array<{ name: string; arguments: any; response: any }> =
+                (result.toolCalls ?? []) as Array<{ name: string; arguments: any; response: any }>;
 
             while (result.finishReason === 'tool_calls' && result.message.tool_calls && toolCallCount < maxToolCalls) {
                 toolCallCount++;
@@ -1270,7 +1275,8 @@ function setupIpcHandlers() {
                     messages: conversationMessages,
                     tools: chatOptions.tools,
                     temperature,
-                    maxTokens
+                    maxTokens,
+                    mcpServerPort: mcpPort
                 });
             }
 
@@ -1935,7 +1941,14 @@ app.whenReady().then(async () => {
 });
 
 
-app.on('before-quit', async () => {
+app.on('before-quit', async (event) => {
+    if (isQuittingCleanup) {
+        return;
+    }
+
+    isQuittingCleanup = true;
+    event.preventDefault();
+
     isQuitting = true;
     console.log('Quitting app...');
 
@@ -1943,15 +1956,32 @@ app.on('before-quit', async () => {
     for (const [profileId, state] of profileStates.entries()) {
         syncCancelled.set(profileId, true);
         state.syncer?.stop();
-        state.database?.close();
+
         if (state.mcpServer?.isRunning()) {
             const port = state.mcpServer.getPort();
             await state.mcpServer.stop();
             portUsage.delete(port);
         }
-        if (state.llmChatService) {
-            await state.llmChatService.terminate();
+
+        if (state.embeddingService) {
+            try {
+                await state.embeddingService.terminate();
+            } catch (error) {
+                console.error(`Error terminating embedding service for ${profileId}:`, error);
+            }
+            state.embeddingService = null;
         }
+
+        if (state.llmChatService) {
+            try {
+                await state.llmChatService.terminate();
+            } catch (error) {
+                console.error(`Error terminating chat service for ${profileId}:`, error);
+            }
+            state.llmChatService = null;
+        }
+
+        state.database?.close();
     }
     profileStates.clear();
     syncCancelled.clear();
@@ -1959,4 +1989,5 @@ app.on('before-quit', async () => {
 
     tray?.destroy();
     console.log('Cleanup complete');
+    app.exit(0);
 });

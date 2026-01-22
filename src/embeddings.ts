@@ -2,7 +2,10 @@ import OpenAI from 'openai';
 import * as path from 'path';
 import { app } from 'electron';
 import * as fs from 'fs';
-import { LlamaServer, QWEN3_EMBEDDING_MODEL, ModelDownloadProgress } from './llama-server';
+import { QWEN3_EMBEDDING_MODEL } from './llama-server';
+import type { Llama, LlamaEmbeddingContext, LlamaModel } from 'node-llama-cpp';
+import * as https from 'https';
+import * as http from 'http';
 
 // Get the models directory
 export function getModelCacheDir(): string {
@@ -75,19 +78,18 @@ export interface DownloadProgress {
     modelName?: string;
 }
 
-// Port for embedding server (different from chat server)
-const EMBEDDING_SERVER_PORT = 8788;
-
 export class EmbeddingService {
     private client: OpenAI | null = null;
     private openaiModel = 'text-embedding-3-large';
     private _isValid = true;
     private provider: EmbeddingProvider;
-    private llamaServer: LlamaServer | null = null;
+    private llama: Llama | null = null;
+    private model: LlamaModel | null = null;
+    private embeddingContext: LlamaEmbeddingContext | null = null;
     private initPromise: Promise<void> | null = null;
     private modelConfig: LocalModelConfig | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
-    private isServerReady = false;
+    private isModelReady = false;
     private contextLength: number;
 
     constructor(provider: EmbeddingProvider = 'local', apiKey?: string, contextLength?: number) {
@@ -107,10 +109,9 @@ export class EmbeddingService {
             }
             this.client = new OpenAI({ apiKey });
         } else {
-            // Local model via llama-server
+            // Local model via node-llama-cpp
             this.modelConfig = LOCAL_MODEL;
-            this.llamaServer = new LlamaServer();
-            this.initPromise = this.initializeServer();
+            this.initPromise = this.initializeLocalModel();
         }
     }
 
@@ -118,71 +119,212 @@ export class EmbeddingService {
         this.downloadProgressCallback = callback;
     }
 
-    private async initializeServer(): Promise<void> {
-        if (!this.llamaServer || !this.modelConfig) {
-            throw new Error('No llama server or model config available');
+    private async initializeLocalModel(): Promise<void> {
+        if (!this.modelConfig) {
+            throw new Error('No local model config available');
         }
 
         const modelsDir = getModelCacheDir();
         const modelPath = path.join(modelsDir, this.modelConfig.filename);
 
-        // Download model if needed
-        if (!this.llamaServer.modelExists(modelPath)) {
-            console.log(`Downloading embedding model: ${this.modelConfig.name}...`);
+        await this.downloadModelIfNeeded(modelPath, this.modelConfig);
 
-            const progressCallback = (progress: ModelDownloadProgress) => {
-                if (this.downloadProgressCallback) {
-                    this.downloadProgressCallback({
-                        status: progress.status === 'downloading' ? 'downloading' :
-                               progress.status === 'ready' ? 'ready' : 'loading',
-                        file: progress.file,
-                        percent: progress.progress,
-                        modelName: this.modelConfig!.name
-                    });
-                }
-            };
+        const nodeLlama = await this.loadNodeLlama();
+        const llama = await nodeLlama.getLlama();
+        const model = await llama.loadModel({ modelPath });
+        const embeddingContext = await model.createEmbeddingContext({
+            contextSize: this.contextLength,
+            threads: 4,
+            batchSize: 512
+        });
 
-            await this.llamaServer.downloadModel(
-                this.modelConfig.repoId,
-                this.modelConfig.filename,
-                modelPath,
-                progressCallback
-            );
+        this.llama = llama;
+        this.model = model;
+        this.embeddingContext = embeddingContext;
+        this.isModelReady = true;
+        console.log(`Embedding model ready: ${this.modelConfig.name}`);
+    }
+
+    private async loadNodeLlama(): Promise<typeof import('node-llama-cpp')> {
+        const globalMock = (globalThis as any).__docs4aiNodeLlamaMock;
+        if (globalMock) {
+            return globalMock as typeof import('node-llama-cpp');
         }
 
-        // Start the llama-server with embedding mode
-        console.log(`Starting embedding server on port ${EMBEDDING_SERVER_PORT}...`);
+        const loader = new Function('specifier', 'return import(specifier);');
+        return loader('node-llama-cpp') as Promise<typeof import('node-llama-cpp')>;
+    }
 
-        const progressCallback = (progress: ModelDownloadProgress) => {
-            if (this.downloadProgressCallback && progress.status === 'ready') {
-                this.downloadProgressCallback({
-                    status: 'ready',
-                    modelName: this.modelConfig!.name
+    private reportDownloadProgress(progress: DownloadProgress) {
+        if (this.downloadProgressCallback) {
+            this.downloadProgressCallback(progress);
+        }
+    }
+
+    private async downloadModelIfNeeded(modelPath: string, modelConfig: LocalModelConfig): Promise<void> {
+        if (process.env.DOCS4AI_SKIP_MODEL_DOWNLOAD === '1') {
+            return;
+        }
+
+        if (fs.existsSync(modelPath)) {
+            return;
+        }
+
+        console.log(`Downloading embedding model: ${modelConfig.name}...`);
+        this.reportDownloadProgress({
+            status: 'downloading',
+            file: modelConfig.filename,
+            percent: 0,
+            modelName: modelConfig.name
+        });
+
+        await this.downloadModel(modelConfig.repoId, modelConfig.filename, modelPath, modelConfig.name);
+        this.reportDownloadProgress({ status: 'ready', modelName: modelConfig.name });
+    }
+
+    private async downloadModel(
+        repoId: string,
+        filename: string,
+        targetPath: string,
+        modelName: string
+    ): Promise<void> {
+        const modelsDir = path.dirname(targetPath);
+        if (!fs.existsSync(modelsDir)) {
+            fs.mkdirSync(modelsDir, { recursive: true });
+        }
+
+        const url = `https://huggingface.co/${repoId}/resolve/main/${filename}`;
+
+        return new Promise((resolve, reject) => {
+            const request = https.get(url, {
+                headers: { 'User-Agent': 'Docs4ai/1.0' }
+            }, (response) => {
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                    const redirectUrl = response.headers.location;
+                    if (redirectUrl) {
+                        this.downloadFromUrl(redirectUrl, targetPath, modelName, filename)
+                            .then(resolve)
+                            .catch(reject);
+                        return;
+                    }
+                }
+
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download model: HTTP ${response.statusCode}`));
+                    return;
+                }
+
+                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+                let downloadedSize = 0;
+
+                const fileStream = fs.createWriteStream(targetPath);
+
+                response.on('data', (chunk: Buffer) => {
+                    downloadedSize += chunk.length;
+                    const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
+                    this.reportDownloadProgress({
+                        status: 'downloading',
+                        file: filename,
+                        percent,
+                        modelName
+                    });
                 });
-            }
-        };
 
-        await this.llamaServer.start({
-            modelPath,
-            port: EMBEDDING_SERVER_PORT,
-            contextSize: this.contextLength,  // Use configured context length
-            threads: 4,
-            embedding: true    // Enable embedding mode
-        }, progressCallback);
+                response.pipe(fileStream);
 
-        this.isServerReady = true;
-        console.log(`Embedding server ready: ${this.modelConfig.name}`);
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(targetPath, () => {});
+                    reject(err);
+                });
+            });
+
+            request.on('error', reject);
+        });
+    }
+
+    private async downloadFromUrl(
+        url: string,
+        targetPath: string,
+        modelName: string,
+        filename: string
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const protocol = url.startsWith('https') ? https : http;
+
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+                    return;
+                }
+
+                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+                let downloadedSize = 0;
+
+                const fileStream = fs.createWriteStream(targetPath);
+
+                response.on('data', (chunk: Buffer) => {
+                    downloadedSize += chunk.length;
+                    const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
+                    this.reportDownloadProgress({
+                        status: 'downloading',
+                        file: filename,
+                        percent,
+                        modelName
+                    });
+                });
+
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(targetPath, () => {});
+                    reject(err);
+                });
+            });
+
+            request.on('error', reject);
+        });
+    }
+
+    private async ensureLocalModelReady(): Promise<void> {
+        if (this.initPromise) {
+            await this.initPromise;
+        }
+
+        if (!this.embeddingContext) {
+            this.isModelReady = false;
+            this.initPromise = this.initializeLocalModel();
+            await this.initPromise;
+        }
+
+        if (!this.embeddingContext) {
+            throw new Error('Embedding model not ready');
+        }
     }
 
     /**
      * Terminate the llama-server. Call this when shutting down.
      */
     async terminate(): Promise<void> {
-        if (this.llamaServer) {
-            await this.llamaServer.stop();
-            this.llamaServer = null;
+        if (this.embeddingContext) {
+            await this.embeddingContext.dispose();
+            this.embeddingContext = null;
         }
-        this.isServerReady = false;
+        if (this.model) {
+            await this.model.dispose();
+            this.model = null;
+        }
+        this.llama = null;
+        this.isModelReady = false;
     }
 
     get isValid(): boolean {
@@ -203,11 +345,9 @@ export class EmbeddingService {
 
     async validateApiKey(): Promise<boolean> {
         if (this.provider !== 'openai') {
-            // For local model, just ensure server is ready
-            if (this.initPromise) {
-                await this.initPromise;
-            }
-            return this.isServerReady;
+            // For local model, ensure model is ready
+            await this.ensureLocalModelReady();
+            return true;
         }
 
         try {
@@ -242,29 +382,24 @@ export class EmbeddingService {
     }
 
     private async generateLocalEmbedding(text: string): Promise<{ embedding: number[]; tokens: number }> {
-        // Wait for server to be ready
-        if (this.initPromise) {
-            await this.initPromise;
-        }
+        await this.ensureLocalModelReady();
 
-        if (!this.llamaServer || !this.isServerReady) {
-            throw new Error('Embedding server not ready');
+        if (!this.embeddingContext) {
+            throw new Error('Embedding model not initialized');
         }
 
         try {
-            const embeddings = await this.llamaServer.embeddings(text);
-
-            if (!embeddings || embeddings.length === 0) {
-                throw new Error('No embedding returned from server');
-            }
+            const embedding = await this.embeddingContext.getEmbeddingFor(text);
+            const vector = Array.from(embedding.vector as Iterable<number>);
+            const tokens = this.model ? this.model.tokenize(text).length : Math.ceil(text.length / 4);
 
             return {
-                embedding: embeddings[0],
-                tokens: Math.ceil(text.length / 4)  // Rough estimate
+                embedding: vector,
+                tokens
             };
         } catch (error: any) {
             console.error('Local embedding error:', error);
-            throw new Error(`Failed to generate embedding: ${error.message}`);
+            throw new Error(`Failed to generate embedding: ${error.message || 'Unknown error'}`);
         }
     }
 

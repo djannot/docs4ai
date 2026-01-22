@@ -1,3 +1,0 @@
-# This directory contains llama-server binaries for each platform
-# Run scripts/download-llama-server.sh to download them
-# The binaries are not committed to git due to their large size

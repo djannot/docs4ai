@@ -1937,11 +1937,6 @@
                             await window.api.stopWatching(profileId);
                         }
                         
-                        // Update the profile in the local profiles array so saveProfileSettings uses the new value
-                        if (profile) {
-                            profile.embeddingProvider = newProvider;
-                        }
-                        
                         // Save profile settings FIRST with new provider so database uses correct dimension
                         await saveProfileSettings(profileId);
                         
@@ -2612,11 +2607,13 @@
             const profile = profiles.find(p => p.id === activeProfileId);
             if (!profile) return;
 
+            const llmProvider = document.getElementById('llmProvider').value;
             const chatApiKey = document.getElementById('chatApiKey').value;
             const chatModel = document.getElementById('chatModel').value;
             const llmContextLength = parseInt(document.getElementById('llmContextLength-chat')?.value) || 8192;
 
             const updates = {};
+            if (llmProvider !== profile.llmProvider) updates.llmProvider = llmProvider;
             if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
             if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
             if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;
@@ -2649,6 +2646,8 @@
                         llmContextLengthGroup.style.display = 'block';
                         infoEl.textContent = t('chat.localInfo');
                     }
+
+                    saveChatSettings();
                 });
             }
 
@@ -2687,6 +2686,12 @@
             if (chatModel) {
                 chatModel.value = profile.llmChatModel || 'gpt-5-mini';
             }
+
+            const providerSelect = document.getElementById('llmProvider');
+            if (providerSelect) {
+                providerSelect.value = profile.llmProvider || 'openai';
+                providerSelect.dispatchEvent(new Event('change'));
+            }
             
             // Sync context length
             const llmContextLengthInput = document.getElementById('llmContextLength-chat');
@@ -2720,6 +2725,7 @@
 
             // Save LLM chat settings to profile if changed
             const updates = {};
+            if (llmProvider !== profile.llmProvider) updates.llmProvider = llmProvider;
             if (chatApiKey !== profile.llmChatApiKey) updates.llmChatApiKey = chatApiKey;
             if (chatModel !== profile.llmChatModel) updates.llmChatModel = chatModel;
             if (llmContextLength !== profile.llmContextLength) updates.llmContextLength = llmContextLength;

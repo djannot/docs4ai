@@ -3,7 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
-import { app } from 'electron';
+import { app, utilityProcess } from 'electron';
+import type { UtilityProcess } from 'electron';
 
 export interface LlamaServerConfig {
     modelPath: string;
@@ -12,6 +13,8 @@ export interface LlamaServerConfig {
     gpuLayers?: number;
     threads?: number;
     embedding?: boolean;  // Enable embedding mode
+    env?: Record<string, string>;
+    useUtilityProcess?: boolean;
 }
 
 export interface ChatMessage {
@@ -73,12 +76,22 @@ type ProgressCallback = (progress: ModelDownloadProgress) => void;
  * This can be used for both chat completions and embeddings
  */
 export class LlamaServer {
-    private process: ChildProcess | null = null;
+    private process: ChildProcess | UtilityProcess | null = null;
     private config: LlamaServerConfig | null = null;
     private isReady: boolean = false;
     private startPromise: Promise<void> | null = null;
     private logStream: fs.WriteStream | null = null;
     private logFilePath: string | null = null;
+    private recentOutput: string[] = [];
+    private lastStopReason: string | null = null;
+
+    private getUtilityProcessScriptPath(): string {
+        const isDev = !app.isPackaged;
+        if (isDev) {
+            return path.join(process.cwd(), 'dist', 'llama-proxy.js');
+        }
+        return path.join(process.resourcesPath, 'dist', 'llama-proxy.js');
+    }
 
     /**
      * Get the path to the llama-server binary for the current platform
@@ -127,6 +140,33 @@ export class LlamaServer {
         const timestamp = new Date().toISOString();
         const line = `[${timestamp}] ${message}`;
         this.ensureLogStream().write(`${line}\n`);
+    }
+
+    logEvent(message: string) {
+        this.log(`[LlamaServer] ${message}`);
+    }
+
+    private captureOutput(output: string) {
+        const trimmed = output.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        this.recentOutput.push(trimmed);
+        if (this.recentOutput.length > 50) {
+            this.recentOutput = this.recentOutput.slice(-50);
+        }
+    }
+
+    private logRecentOutput(prefix: string) {
+        if (this.recentOutput.length === 0) {
+            return;
+        }
+
+        this.log(`${prefix} (last ${this.recentOutput.length} lines):`);
+        for (const line of this.recentOutput) {
+            this.log(line);
+        }
     }
 
     private closeLogStream() {
@@ -295,6 +335,14 @@ export class LlamaServer {
     }
 
     private async _start(config: LlamaServerConfig, onProgress?: ProgressCallback): Promise<void> {
+        this.log('------------------------------------------------------------');
+        if (this.lastStopReason) {
+            this.log(`[LlamaServer] Restart reason: ${this.lastStopReason}`);
+            this.lastStopReason = null;
+        }
+        this.logRecentOutput('[LlamaServer] Previous output');
+        this.recentOutput = [];
+
         // Stop any existing process
         await this.stop();
 
@@ -342,10 +390,20 @@ export class LlamaServer {
         onProgress?.({ status: 'downloading', file: 'Starting server...' });
 
         return new Promise((resolve, reject) => {
-            this.process = spawn(binaryPath, args, {
-                stdio: ['pipe', 'pipe', 'pipe'],
-                env: { ...process.env }
-            });
+            const env = { ...process.env, ...(config.env || {}) };
+            if (config.useUtilityProcess) {
+                const proxyScript = this.getUtilityProcessScriptPath();
+                this.log(`[LlamaServer] Spawning via Electron utilityProcess: ${proxyScript}`);
+                this.process = utilityProcess.fork(proxyScript, [binaryPath, ...args], {
+                    stdio: 'pipe',
+                    env
+                });
+            } else {
+                this.process = spawn(binaryPath, args, {
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                    env
+                });
+            }
 
             let startupOutput = '';
             const timeout = setTimeout(() => {
@@ -356,10 +414,13 @@ export class LlamaServer {
             }, 60000); // 60 second timeout
             timeout.unref();
 
-            this.process.stdout?.on('data', (data: Buffer) => {
+            const proc = this.process as any;
+
+            proc.stdout?.on('data', (data: Buffer) => {
                 const output = data.toString();
                 startupOutput += output;
                 this.log(`[LlamaServer stdout] ${output.trim()}`);
+                this.captureOutput(output);
 
                 // Check if server is ready
                 if (output.includes('HTTP server listening') || output.includes('all slots are idle')) {
@@ -370,9 +431,10 @@ export class LlamaServer {
                 }
             });
 
-            this.process.stderr?.on('data', (data: Buffer) => {
+            proc.stderr?.on('data', (data: Buffer) => {
                 const output = data.toString();
                 this.log(`[LlamaServer stderr] ${output.trim()}`);
+                this.captureOutput(output);
 
                 // llama-server outputs progress to stderr
                 if (output.includes('HTTP server listening') || output.includes('all slots are idle')) {
@@ -383,16 +445,17 @@ export class LlamaServer {
                 }
             });
 
-            this.process.on('error', (err) => {
+            proc.on('error', (err: Error) => {
                 clearTimeout(timeout);
                 this.log(`[LlamaServer] Process error: ${err.message}`);
                 onProgress?.({ status: 'error', error: err.message });
                 reject(err);
             });
 
-            this.process.on('exit', (code) => {
+            proc.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
                 clearTimeout(timeout);
-                this.log(`[LlamaServer] Process exited with code ${code}`);
+                this.log(`[LlamaServer] Process exited with code ${code}, signal ${signal || 'none'}`);
+                this.logRecentOutput('[LlamaServer] Output before exit');
                 this.isReady = false;
                 this.process = null;
 
@@ -406,23 +469,29 @@ export class LlamaServer {
     /**
      * Stop the llama-server process
      */
-    async stop(): Promise<void> {
+    async stop(reason?: string): Promise<void> {
+        if (reason) {
+            this.lastStopReason = reason;
+            this.log(`[LlamaServer] Stop requested: ${reason}`);
+        }
+
         if (this.process) {
             this.log('[LlamaServer] Stopping server...');
-            this.process.kill('SIGTERM');
+            const proc = this.process as any;
+            proc.kill('SIGTERM');
 
             // Wait for process to exit
             await new Promise<void>((resolve) => {
                 const timeout = setTimeout(() => {
                     if (this.process) {
-                        this.process.kill('SIGKILL');
+                        proc.kill('SIGKILL');
                     }
                     resolve();
                 }, 5000);
                 timeout.unref();
 
                 if (this.process) {
-                    this.process.on('exit', () => {
+                    proc.on('exit', () => {
                         clearTimeout(timeout);
                         resolve();
                     });
@@ -483,9 +552,14 @@ export class LlamaServer {
 
         const response = await this.httpPost(`http://127.0.0.1:${port}/v1/chat/completions`, body);
 
+        if (response?.error) {
+            const errorMessage = response.error?.message || JSON.stringify(response.error);
+            throw new Error(`LlamaServer error: ${errorMessage}`);
+        }
+
         const choice = response.choices?.[0];
         if (!choice) {
-            throw new Error('No response from server');
+            throw new Error(`No response from server: ${JSON.stringify(response).slice(0, 200)}`);
         }
 
         const message: ChatMessage = {

@@ -1,6 +1,11 @@
 import * as path from 'path';
 import OpenAI from 'openai';
-import { LlamaServer, QWEN3_CHAT_MODEL, ModelDownloadProgress } from './llama-server';
+import * as fs from 'fs';
+import * as https from 'https';
+import * as http from 'http';
+import type { ChatHistoryItem, Llama, LlamaChatSession, LlamaContext, LlamaModel } from 'node-llama-cpp';
+import { QWEN3_CHAT_MODEL } from './llama-server';
+import { getModelCacheDir } from './embeddings';
 
 // LLM Provider types
 export type LLMProvider = 'local-qwen3' | 'openai';
@@ -40,6 +45,7 @@ export interface ChatCompletionOptions {
     tools?: ToolDefinition[];
     temperature?: number;
     maxTokens?: number;
+    mcpServerPort?: number;
 }
 
 export interface ChatCompletionResult {
@@ -50,6 +56,7 @@ export interface ChatCompletionResult {
         completionTokens: number;
         totalTokens: number;
     };
+    toolCalls?: Array<{ name: string; arguments: any; response: any }>;
 }
 
 export interface DownloadProgress {
@@ -111,18 +118,18 @@ export const MCP_TOOLS: ToolDefinition[] = [
     }
 ];
 
-// Default port for llama-server (different from MCP server port)
-const LLAMA_SERVER_PORT = 8787;
-
 export class LLMChatService {
     private provider: LLMProvider;
     private openaiClient: OpenAI | null = null;
     private openaiApiKey: string | null = null;
     private openaiModel: string = 'gpt-5-mini';
-    private llamaServer: LlamaServer | null = null;
     private downloadProgressCallback: ((progress: DownloadProgress) => void) | null = null;
     private isTerminating: boolean = false;
     private contextLength: number;
+    private llama: Llama | null = null;
+    private model: LlamaModel | null = null;
+    private context: LlamaContext | null = null;
+    private session: LlamaChatSession | null = null;
 
     constructor(provider: LLMProvider, apiKey?: string, model?: string, contextLength?: number) {
         this.provider = provider;
@@ -137,9 +144,6 @@ export class LLMChatService {
             this.openaiApiKey = apiKey;
             this.openaiModel = model || 'gpt-5-mini';
             this.openaiClient = new OpenAI({ apiKey });
-        } else {
-            // Create LlamaServer instance for local provider
-            this.llamaServer = new LlamaServer();
         }
     }
 
@@ -151,6 +155,206 @@ export class LLMChatService {
         this.downloadProgressCallback = callback;
     }
 
+    private async loadNodeLlama(): Promise<typeof import('node-llama-cpp')> {
+        const globalMock = (globalThis as any).__docs4aiNodeLlamaMock;
+        if (globalMock) {
+            return globalMock as typeof import('node-llama-cpp');
+        }
+
+        const loader = new Function('specifier', 'return import(specifier);');
+        return loader('node-llama-cpp') as Promise<typeof import('node-llama-cpp')>;
+    }
+
+    private reportDownloadProgress(progress: DownloadProgress) {
+        this.downloadProgressCallback?.(progress);
+    }
+
+    private async downloadModelIfNeeded(modelPath: string): Promise<void> {
+        if (process.env.DOCS4AI_SKIP_MODEL_DOWNLOAD === '1') {
+            return;
+        }
+
+        if (fs.existsSync(modelPath)) {
+            return;
+        }
+
+        console.log(`[LLMChat] Downloading model ${QWEN3_CHAT_MODEL.name}...`);
+        this.reportDownloadProgress({
+            status: 'downloading',
+            file: QWEN3_CHAT_MODEL.filename,
+            progress: 0
+        });
+
+        await this.downloadModel(QWEN3_CHAT_MODEL.repoId, QWEN3_CHAT_MODEL.filename, modelPath);
+        this.reportDownloadProgress({ status: 'ready', file: QWEN3_CHAT_MODEL.filename, progress: 100 });
+    }
+
+    private async downloadModel(repoId: string, filename: string, targetPath: string): Promise<void> {
+        const modelsDir = path.dirname(targetPath);
+        if (!fs.existsSync(modelsDir)) {
+            fs.mkdirSync(modelsDir, { recursive: true });
+        }
+
+        const url = `https://huggingface.co/${repoId}/resolve/main/${filename}`;
+
+        return new Promise((resolve, reject) => {
+            const request = https.get(url, {
+                headers: { 'User-Agent': 'Docs4ai/1.0' }
+            }, (response) => {
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                    const redirectUrl = response.headers.location;
+                    if (redirectUrl) {
+                        this.downloadFromUrl(redirectUrl, targetPath)
+                            .then(resolve)
+                            .catch(reject);
+                        return;
+                    }
+                }
+
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download model: HTTP ${response.statusCode}`));
+                    return;
+                }
+
+                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+                let downloadedSize = 0;
+
+                const fileStream = fs.createWriteStream(targetPath);
+
+                response.on('data', (chunk: Buffer) => {
+                    downloadedSize += chunk.length;
+                    const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
+                    this.reportDownloadProgress({
+                        status: 'downloading',
+                        file: filename,
+                        progress: percent
+                    });
+                });
+
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(targetPath, () => {});
+                    reject(err);
+                });
+            });
+
+            request.on('error', reject);
+        });
+    }
+
+    private async downloadFromUrl(url: string, targetPath: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const protocol = url.startsWith('https') ? https : http;
+
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode !== 200) {
+                    reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+                    return;
+                }
+
+                const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+                let downloadedSize = 0;
+
+                const fileStream = fs.createWriteStream(targetPath);
+
+                response.on('data', (chunk: Buffer) => {
+                    downloadedSize += chunk.length;
+                    const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
+                    this.reportDownloadProgress({
+                        status: 'downloading',
+                        file: QWEN3_CHAT_MODEL.filename,
+                        progress: percent
+                    });
+                });
+
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve();
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(targetPath, () => {});
+                    reject(err);
+                });
+            });
+
+            request.on('error', reject);
+        });
+    }
+
+    private async initializeLocalModel(): Promise<void> {
+        if (this.session) {
+            return;
+        }
+
+        const modelsDir = getModelCacheDir();
+        const modelPath = path.join(modelsDir, QWEN3_CHAT_MODEL.filename);
+        await this.downloadModelIfNeeded(modelPath);
+
+        const nodeLlama = await this.loadNodeLlama();
+        const llama = await nodeLlama.getLlama();
+        const model = await llama.loadModel({ modelPath });
+        const context = await model.createContext({
+            contextSize: this.contextLength,
+            threads: 4
+        });
+        const session = new nodeLlama.LlamaChatSession({
+            contextSequence: context.getSequence()
+        });
+
+        this.llama = llama;
+        this.model = model;
+        this.context = context;
+        this.session = session;
+
+        console.log('[LLMChat] Local model ready');
+    }
+
+    private buildChatHistory(messages: ChatMessage[]): { history: ChatHistoryItem[]; prompt: string } {
+        let lastUserIndex = -1;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === 'user') {
+                lastUserIndex = i;
+                break;
+            }
+        }
+
+        const prompt = lastUserIndex >= 0
+            ? messages[lastUserIndex].content
+            : messages[messages.length - 1]?.content || '';
+
+        const historyMessages = lastUserIndex >= 0
+            ? messages.slice(0, lastUserIndex)
+            : messages;
+
+        const history: ChatHistoryItem[] = historyMessages.map((message) => {
+            if (message.role === 'system') {
+                return { type: 'system', text: message.content };
+            }
+
+            if (message.role === 'assistant') {
+                return { type: 'model', response: [message.content] };
+            }
+
+            if (message.role === 'tool') {
+                const toolName = message.name || 'tool';
+                return { type: 'user', text: `Tool result for ${toolName}: ${message.content}` };
+            }
+
+            return { type: 'user', text: message.content };
+        });
+
+        return { history, prompt };
+    }
+
     /**
      * Initialize the local LLM server (only needed for local provider)
      */
@@ -159,50 +363,7 @@ export class LLMChatService {
             // OpenAI doesn't need initialization
             return;
         }
-
-        if (!this.llamaServer) {
-            this.llamaServer = new LlamaServer();
-        }
-
-        if (this.llamaServer.isRunning()) {
-            return;
-        }
-
-        // Get model path
-        const modelsDir = this.llamaServer.getModelsDir();
-        const modelPath = path.join(modelsDir, QWEN3_CHAT_MODEL.filename);
-
-        // Download model if not present
-        if (!this.llamaServer.modelExists(modelPath)) {
-            console.log(`[LLMChat] Downloading model ${QWEN3_CHAT_MODEL.name}...`);
-            this.downloadProgressCallback?.({
-                status: 'downloading',
-                file: QWEN3_CHAT_MODEL.filename,
-                progress: 0
-            });
-
-            await this.llamaServer.downloadModel(
-                QWEN3_CHAT_MODEL.repoId,
-                QWEN3_CHAT_MODEL.filename,
-                modelPath,
-                (progress) => {
-                    this.downloadProgressCallback?.(progress);
-                }
-            );
-        }
-
-        // Start llama-server
-        console.log(`[LLMChat] Starting llama-server with model ${QWEN3_CHAT_MODEL.name}...`);
-        await this.llamaServer.start({
-            modelPath,
-            port: LLAMA_SERVER_PORT,
-            contextSize: this.contextLength,  // Use configured context length
-            threads: 4
-        }, (progress) => {
-            this.downloadProgressCallback?.(progress);
-        });
-
-        console.log('[LLMChat] LlamaServer is ready');
+        await this.initializeLocalModel();
     }
 
     /**
@@ -212,7 +373,7 @@ export class LLMChatService {
         if (this.provider === 'openai') {
             return this.chatWithOpenAI(options);
         } else {
-            return this.chatWithLlamaServer(options);
+            return this.chatWithLocalModel(options);
         }
     }
 
@@ -247,10 +408,12 @@ export class LLMChatService {
             // Newer models (gpt-4o, gpt-5, etc.) use max_completion_tokens
             // Older models (gpt-4-turbo, gpt-3.5-turbo) use max_tokens
             const isNewModel = this.openaiModel.startsWith('gpt-4') || this.openaiModel.startsWith('gpt-5') || this.openaiModel.startsWith('gpt-o1');
-            if (isNewModel) {
-                requestParams.max_completion_tokens = options.maxTokens ?? 2048;
-            } else {
-                requestParams.max_tokens = options.maxTokens ?? 2048;
+            if (options.maxTokens !== undefined) {
+                if (isNewModel) {
+                    requestParams.max_completion_tokens = options.maxTokens;
+                } else {
+                    requestParams.max_tokens = options.maxTokens;
+                }
             }
 
             if (options.tools && options.tools.length > 0) {
@@ -300,28 +463,71 @@ export class LLMChatService {
         }
     }
 
-    private async chatWithLlamaServer(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
-        if (!this.llamaServer || !this.llamaServer.isRunning()) {
-            await this.initialize();
+    private async chatWithLocalModel(options: ChatCompletionOptions): Promise<ChatCompletionResult> {
+        await this.initialize();
+
+        if (!this.session) {
+            throw new Error('Local chat session not initialized');
         }
 
-        try {
-            const result = await this.llamaServer!.chatCompletion({
-                messages: options.messages,
-                tools: options.tools,
-                temperature: options.temperature ?? 0.7,
-                maxTokens: options.maxTokens ?? 2048
-            });
+        const { history, prompt } = this.buildChatHistory(options.messages);
+        this.session.setChatHistory(history);
 
-            return {
-                message: result.message,
-                finishReason: result.finishReason as 'stop' | 'tool_calls' | 'length' | 'error',
-                usage: result.usage
-            };
-        } catch (error: any) {
-            console.error('LlamaServer chat error:', error);
-            throw error;
+        const executedToolCalls: Array<{ name: string; arguments: any; response: any }> = [];
+        let functions: Record<string, any> | undefined;
+
+        if (options.tools && options.tools.length > 0) {
+            const nodeLlama = await this.loadNodeLlama();
+
+            functions = Object.fromEntries(options.tools.map((tool) => {
+                const functionName = tool.function.name;
+                return [functionName, nodeLlama.defineChatSessionFunction({
+                    description: tool.function.description,
+                    params: tool.function.parameters as any,
+                    handler: async (params: any) => {
+                        if (!options.mcpServerPort) {
+                            return 'Error: MCP server port not available';
+                        }
+
+                        const toolCall: ToolCall = {
+                            id: `call_${Date.now()}_${functionName}`,
+                            type: 'function',
+                            function: {
+                                name: functionName,
+                                arguments: JSON.stringify(params)
+                            }
+                        };
+
+                        const response = await executeMcpToolCall(toolCall, options.mcpServerPort);
+                        executedToolCalls.push({ name: functionName, arguments: params, response });
+                        return response;
+                    }
+                })];
+            }));
         }
+
+        const responseText = await this.session.prompt(prompt, {
+            temperature: options.temperature ?? 0.7,
+            maxTokens: options.maxTokens,
+            functions
+        });
+
+        const promptTokens = this.model ? this.model.tokenize(prompt).length : 0;
+        const completionTokens = this.model ? this.model.tokenize(responseText).length : 0;
+
+        return {
+            message: {
+                role: 'assistant',
+                content: responseText
+            },
+            finishReason: 'stop',
+            usage: this.model ? {
+                promptTokens,
+                completionTokens,
+                totalTokens: promptTokens + completionTokens
+            } : undefined,
+            toolCalls: executedToolCalls.length > 0 ? executedToolCalls : undefined
+        };
     }
 
     /**
@@ -333,10 +539,19 @@ export class LLMChatService {
         }
         this.isTerminating = true;
 
-        if (this.llamaServer) {
-            await this.llamaServer.stop();
-            this.llamaServer = null;
+        if (this.session) {
+            await this.session.dispose();
+            this.session = null;
         }
+        if (this.context) {
+            await this.context.dispose();
+            this.context = null;
+        }
+        if (this.model) {
+            await this.model.dispose();
+            this.model = null;
+        }
+        this.llama = null;
 
         this.isTerminating = false;
     }
