@@ -77,6 +77,8 @@ export class LlamaServer {
     private config: LlamaServerConfig | null = null;
     private isReady: boolean = false;
     private startPromise: Promise<void> | null = null;
+    private logStream: fs.WriteStream | null = null;
+    private logFilePath: string | null = null;
 
     /**
      * Get the path to the llama-server binary for the current platform
@@ -107,6 +109,32 @@ export class LlamaServer {
     getModelsDir(): string {
         const userDataPath = app.getPath('userData');
         return path.join(userDataPath, 'models');
+    }
+
+    private ensureLogStream(): fs.WriteStream {
+        if (!this.logStream) {
+            const userDataPath = app.getPath('userData');
+            const logsDir = path.join(userDataPath, 'logs');
+            fs.mkdirSync(logsDir, { recursive: true });
+            this.logFilePath = path.join(logsDir, 'llama-server.log');
+            this.logStream = fs.createWriteStream(this.logFilePath, { flags: 'a' });
+        }
+
+        return this.logStream;
+    }
+
+    private log(message: string) {
+        const timestamp = new Date().toISOString();
+        const line = `[${timestamp}] ${message}`;
+        this.ensureLogStream().write(`${line}\n`);
+    }
+
+    private closeLogStream() {
+        if (this.logStream) {
+            this.logStream.end();
+            this.logStream = null;
+            this.logFilePath = null;
+        }
     }
 
     /**
@@ -288,7 +316,7 @@ export class LlamaServer {
             try {
                 fs.chmodSync(binaryPath, '755');
             } catch (e) {
-                console.warn('Could not set binary permissions:', e);
+                this.log(`Could not set binary permissions: ${String(e)}`);
             }
         }
 
@@ -310,7 +338,7 @@ export class LlamaServer {
             args.push('--embedding');
         }
 
-        console.log(`[LlamaServer] Starting: ${binaryPath} ${args.join(' ')}`);
+        this.log(`[LlamaServer] Starting: ${binaryPath} ${args.join(' ')}`);
         onProgress?.({ status: 'downloading', file: 'Starting server...' });
 
         return new Promise((resolve, reject) => {
@@ -330,7 +358,7 @@ export class LlamaServer {
             this.process.stdout?.on('data', (data: Buffer) => {
                 const output = data.toString();
                 startupOutput += output;
-                console.log('[LlamaServer stdout]', output.trim());
+                this.log(`[LlamaServer stdout] ${output.trim()}`);
 
                 // Check if server is ready
                 if (output.includes('HTTP server listening') || output.includes('all slots are idle')) {
@@ -343,7 +371,7 @@ export class LlamaServer {
 
             this.process.stderr?.on('data', (data: Buffer) => {
                 const output = data.toString();
-                console.log('[LlamaServer stderr]', output.trim());
+                this.log(`[LlamaServer stderr] ${output.trim()}`);
 
                 // llama-server outputs progress to stderr
                 if (output.includes('HTTP server listening') || output.includes('all slots are idle')) {
@@ -356,14 +384,14 @@ export class LlamaServer {
 
             this.process.on('error', (err) => {
                 clearTimeout(timeout);
-                console.error('[LlamaServer] Process error:', err);
+                this.log(`[LlamaServer] Process error: ${err.message}`);
                 onProgress?.({ status: 'error', error: err.message });
                 reject(err);
             });
 
             this.process.on('exit', (code) => {
                 clearTimeout(timeout);
-                console.log(`[LlamaServer] Process exited with code ${code}`);
+                this.log(`[LlamaServer] Process exited with code ${code}`);
                 this.isReady = false;
                 this.process = null;
 
@@ -379,7 +407,7 @@ export class LlamaServer {
      */
     async stop(): Promise<void> {
         if (this.process) {
-            console.log('[LlamaServer] Stopping server...');
+            this.log('[LlamaServer] Stopping server...');
             this.process.kill('SIGTERM');
 
             // Wait for process to exit
@@ -405,6 +433,7 @@ export class LlamaServer {
             this.process = null;
         }
         this.isReady = false;
+        this.closeLogStream();
     }
 
     /**
