@@ -86,7 +86,16 @@
     "hideDetails": "Details ausblenden",
     "apiKeyRequired": "Bitte geben Sie einen OpenAI API-Schlüssel für den Chat ein.",
     "arguments": "Argumente",
-    "response": "Antwort"
+    "response": "Antwort",
+    "chunkMapTitle": "Chunk map",
+    "chunkMapResult": "Result {{index}}",
+    "chunkMapRange": "{{count}} chunks",
+    "chunkLabel": "Chunk {{current}} of {{total}}",
+    "chunkSection": "Section",
+    "chunkDistanceLabel": "Distance {{distance}}",
+    "chunkContentEmpty": "No content loaded yet.",
+    "chunkContentLoading": "Loading chunk content...",
+    "chunkContentError": "Unable to load chunk content."
   },
   "ui": {
     "noProfileSelected": "Kein Profil ausgewählt",

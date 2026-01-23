@@ -90,7 +90,16 @@
     "hideDetails": "Hide details",
     "apiKeyRequired": "Please enter an OpenAI API key for chat.",
     "arguments": "Arguments",
-    "response": "Response"
+    "response": "Response",
+    "chunkMapTitle": "Chunk map",
+    "chunkMapResult": "Result {{index}}",
+    "chunkMapRange": "{{count}} chunks",
+    "chunkLabel": "Chunk {{current}} of {{total}}",
+    "chunkSection": "Section",
+    "chunkDistanceLabel": "Distance {{distance}}",
+    "chunkContentEmpty": "No content loaded yet.",
+    "chunkContentLoading": "Loading chunk content...",
+    "chunkContentError": "Unable to load chunk content."
   },
   "ui": {
     "noProfileSelected": "No profile selected",

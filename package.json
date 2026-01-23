@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc && npm run copy-locales",
     "copy-locales": "mkdir -p dist/locales && cp -r src/locales/*.json dist/locales/",
-    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "rebuild:node": "npm rebuild better-sqlite3",
@@ -14,7 +14,9 @@
     "dev": "npm run rebuild:electron && tsc && electron .",
     "package": "npm run build && electron-builder",
     "package:mac": "npm run build && electron-builder --mac",
-    "package:win": "npm run build && electron-builder --win",
+    "ci:docker": "npm ci --ignore-scripts",
+    "package:win:docker": "docker run --rm -t --user \"$(id -u)\":\"$(id -g)\" -e HOME=/project/.home -e WINEPREFIX=/project/.wine -e npm_config_cache=/project/.npm-cache --tmpfs /project/node_modules:uid=$(id -u),gid=$(id -g),mode=755,exec -v \"$PWD\":/project -w /project -v \"$HOME/.cache/electron\":/root/.cache/electron -v \"$HOME/.cache/electron-builder\":/root/.cache/electron-builder electronuserland/builder:20-wine-mono-03.25 bash -lc \"mkdir -p /project/.home /project/.wine /project/.npm-cache && if [ -f package-lock.json ]; then cp package-lock.json package-lock.linux.json; fi && if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi && export npm_config_platform=win32 npm_config_arch=x64 && npm install --ignore-scripts --no-save --force sqlite-vec-windows-x64@0.1.7-alpha.2 && NLC_VERSION=$(node -p 'require(\"./node_modules/node-llama-cpp/package.json\").version') && npm install --no-save --ignore-scripts --force --os=win32 --cpu=x64 \"@node-llama-cpp/win-x64@${NLC_VERSION}\" && npm run build && npx electron-builder install-app-deps --platform win32 --arch x64 && npx electron-builder --win\"",
+    "fix:linux-permissions": "sudo chown -R \"$USER\":\"$USER\" node_modules dist release && rm -rf node_modules/better-sqlite3/build",
     "package:linux": "npm run build && electron-builder --linux",
     "test": "npm run rebuild:node && npm run build && jest",
     "test:watch": "npm run rebuild:node && npm run build && jest --watch",
@@ -29,9 +31,14 @@
     "files": [
       "dist/**/*",
       "src/index.html",
-      "node_modules/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "**/*.node",
+      "**/*.dll",
+      "**/*.so"
+    ],
+    "afterPack": "build/afterPack.js",
     "mac": {
       "category": "public.app-category.productivity",
       "target": [

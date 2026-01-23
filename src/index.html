@@ -1268,6 +1268,168 @@
             word-break: break-word;
         }
 
+        .chunk-diagram {
+            background: #f3f6fb;
+            border: 1px solid #d5e1ef;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .chunk-diagram-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .chunk-diagram-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #54667a;
+        }
+
+        .chunk-diagram-meta {
+            font-size: 12px;
+            color: #6d7f92;
+            white-space: nowrap;
+        }
+
+        .chunk-diagram-file {
+            font-size: 12px;
+            color: #4a5a6b;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chunk-diagram-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            padding: 6px 0 12px 0;
+        }
+
+        .chunk-diagram-line {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 1px;
+            background: #c8d4e2;
+            z-index: 0;
+        }
+
+        .chunk-diagram-track {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            position: relative;
+            padding: 6px 8px 12px;
+            overflow-x: auto;
+        }
+
+        .chunk-diagram-track::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 6px;
+            right: 6px;
+            height: 1px;
+            background: #c8d4e2;
+        }
+
+        .chunk-diagram-distance {
+            position: relative;
+            height: 64px;
+            margin: 8px 0 10px;
+        }
+
+        .chunk-diagram-distance-line {
+            position: absolute;
+            top: 50%;
+            left: 6px;
+            right: 6px;
+            height: 1px;
+            background: #c8d4e2;
+        }
+
+        .chunk-diagram-node {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 1px solid #b6c4d3;
+            background: #f4f7fb;
+            color: #425569;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            z-index: 1;
+            transition: all 0.15s ease;
+        }
+
+        .chunk-diagram-node:hover {
+            border-color: #0071e3;
+            color: #1f5aa6;
+        }
+
+        .chunk-diagram-node.center {
+            width: 44px;
+            height: 44px;
+            background: #e6f0ff;
+            border-color: #4a89d8;
+            color: #1f5aa6;
+        }
+
+        .chunk-diagram-node.active {
+            box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
+        }
+
+        .chunk-diagram-node.pending {
+            border-style: dashed;
+            color: #8a97a6;
+            background: #f7f8fa;
+        }
+
+        .chunk-diagram-node.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .chunk-diagram-content {
+            background: white;
+            border: 1px solid #d7e0ea;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .chunk-diagram-content-header {
+            font-size: 12px;
+            color: #5b6b7b;
+            margin-bottom: 6px;
+        }
+
+        .chunk-diagram-content-body {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
         /* Markdown styles for chat messages */
         .chat-message-content p {
             margin: 0 0 8px 0;
@@ -1350,6 +1512,7 @@
         let profileStats = new Map();
         let mcpRunning = false;
         let saveSettingsTimers = new Map(); // Debounce timers for profile settings
+        const chunkContentCache = new Map();
 
         // Load profiles on startup
         async function loadProfiles() {
@@ -1581,6 +1744,7 @@
         async function switchProfile(profileId) {
             activeProfileId = profileId;
             await window.api.setActiveProfile(profileId);
+            chunkContentCache.clear();
             renderTabs();
             await renderActiveProfile();
             syncLlmChatSettingsFromProfile();
@@ -2973,6 +3137,400 @@
             return html;
         }
 
+        function normalizeChunkFilePath(filePath) {
+            if (!filePath) return '';
+            return filePath.replace(/^file:\/\//, '');
+        }
+
+        function getChunkFileLabel(filePath) {
+            const normalizedPath = normalizeChunkFilePath(filePath);
+            const parts = normalizedPath.split(/[\\/]/);
+            return parts[parts.length - 1] || normalizedPath || filePath;
+        }
+
+        async function loadChunkCache(filePath) {
+            const normalizedPath = normalizeChunkFilePath(filePath);
+            if (!normalizedPath || chunkContentCache.has(normalizedPath)) {
+                return chunkContentCache.get(normalizedPath) || null;
+            }
+            if (!activeProfileId) {
+                return null;
+            }
+
+            try {
+                const chunks = await window.api.getChunks(activeProfileId, normalizedPath);
+                const chunkMap = new Map();
+                chunks.forEach((chunk) => {
+                    chunkMap.set(chunk.chunkIndex, {
+                        ...chunk,
+                        totalChunks: chunks.length
+                    });
+                });
+                chunkContentCache.set(normalizedPath, chunkMap);
+                return chunkMap;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function parseQueryDocumentsResponse(responseText) {
+            if (!responseText || !responseText.includes('**Result')) return [];
+            const results = [];
+            const resultRegex = /\*\*Result\s+\d+\*\*\s*\(distance:\s*([0-9.]+)\)\nFile:\s*(.+)\nSection:\s*(.*)\nChunk:\s*(\d+)\s+of\s+(\d+)\n([\s\S]*?)(?=\n\*\*Result|\n?$)/g;
+            let match;
+            while ((match = resultRegex.exec(responseText)) !== null) {
+                const [, distance, filePath, section, chunkNumber, totalChunks, content] = match;
+                results.push({
+                    filePath: filePath.trim(),
+                    section: section.trim(),
+                    chunkIndex: Number(chunkNumber) - 1,
+                    totalChunks: Number(totalChunks),
+                    content: cleanChunkContent(content),
+                    distance: Number(distance)
+                });
+            }
+            return results;
+        }
+
+        function parseGetChunksResponse(responseText) {
+            if (!responseText || !responseText.includes('**Chunk')) return null;
+            const headerMatch = responseText.match(/from\s+"([^"]+)"/);
+            const filePath = headerMatch?.[1] || '';
+            const chunks = [];
+            const chunkRegex = /\*\*Chunk\s+(\d+)\s+of\s+(\d+)\*\*\nSection:\s*(.*)\n([\s\S]*?)(?=\n\*\*Chunk|\n?$)/g;
+            let match;
+            while ((match = chunkRegex.exec(responseText)) !== null) {
+                const [, chunkNumber, totalChunks, section, content] = match;
+                chunks.push({
+                    chunkIndex: Number(chunkNumber) - 1,
+                    totalChunks: Number(totalChunks),
+                    section: section.trim(),
+                    content: cleanChunkContent(content)
+                });
+            }
+
+            if (!chunks.length) return null;
+            return { filePath, chunks };
+        }
+
+        function cleanChunkContent(content) {
+            if (!content) return '';
+            return content.replace(/\n---\s*$/, '').trim();
+        }
+
+        function buildChunkDiagramHeader({ title, filePath, meta }) {
+            const header = document.createElement('div');
+            header.className = 'chunk-diagram-header';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'chunk-diagram-title';
+            titleEl.textContent = title;
+
+            const metaEl = document.createElement('div');
+            metaEl.className = 'chunk-diagram-meta';
+            metaEl.textContent = meta || '';
+
+            const fileEl = document.createElement('div');
+            fileEl.className = 'chunk-diagram-file';
+            if (filePath) {
+                fileEl.textContent = getChunkFileLabel(filePath);
+                fileEl.title = normalizeChunkFilePath(filePath) || filePath;
+            }
+
+            const rightGroup = document.createElement('div');
+            rightGroup.style.display = 'flex';
+            rightGroup.style.flexDirection = 'column';
+            rightGroup.style.alignItems = 'flex-end';
+            rightGroup.style.gap = '2px';
+            if (meta) {
+                rightGroup.appendChild(metaEl);
+            }
+            if (filePath) {
+                rightGroup.appendChild(fileEl);
+            }
+
+            header.appendChild(titleEl);
+            header.appendChild(rightGroup);
+            return header;
+        }
+
+        function buildChunkContentPanel() {
+            const panel = document.createElement('div');
+            panel.className = 'chunk-diagram-content';
+
+            const header = document.createElement('div');
+            header.className = 'chunk-diagram-content-header';
+
+            const body = document.createElement('div');
+            body.className = 'chunk-diagram-content-body';
+
+            panel.appendChild(header);
+            panel.appendChild(body);
+
+            return { panel, header, body };
+        }
+
+        function buildChunkDiagramForToolCall(toolCall, index) {
+            if (!toolCall || typeof toolCall.response !== 'string') return null;
+            if (toolCall.name === 'query_documents') {
+                const results = parseQueryDocumentsResponse(toolCall.response);
+                if (!results.length) return null;
+
+                return createChunkDistanceDiagram(results);
+            }
+
+            if (toolCall.name === 'get_chunks') {
+                const parsed = parseGetChunksResponse(toolCall.response);
+                if (!parsed) return null;
+                return createChunkSequenceDiagram(parsed);
+            }
+
+            return null;
+        }
+
+        function createChunkDistanceDiagram(results) {
+            const sortedResults = results
+                .slice()
+                .sort((a, b) => a.distance - b.distance)
+                .slice(0, 5);
+
+            const container = document.createElement('div');
+            container.className = 'chunk-diagram';
+            container.appendChild(buildChunkDiagramHeader({
+                title: t('chat.chunkMapTitle'),
+                filePath: '',
+                meta: t('chat.chunkMapRange', { count: sortedResults.length })
+            }));
+
+            const distanceMap = document.createElement('div');
+            distanceMap.className = 'chunk-diagram-distance';
+
+            const line = document.createElement('div');
+            line.className = 'chunk-diagram-distance-line';
+            distanceMap.appendChild(line);
+
+            const { panel, header, body } = buildChunkContentPanel();
+            const nodes = new Map();
+
+            const distances = sortedResults.map((result) => result.distance);
+            const minDistance = Math.min(...distances);
+            const maxDistance = Math.max(...distances);
+            const distanceSpan = Math.max(maxDistance - minDistance, 0.0001);
+
+            const updateContent = (index) => {
+                const data = sortedResults[index];
+                const chunkLabel = t('chat.chunkLabel', {
+                    current: data.chunkIndex + 1,
+                    total: data.totalChunks
+                });
+                const fileLabel = getChunkFileLabel(data.filePath);
+                const distanceLabel = t('chat.chunkDistanceLabel', { distance: data.distance.toFixed(4) });
+                const sectionLabel = data.section ? `${t('chat.chunkSection')}: ${data.section}` : '';
+                header.textContent = [fileLabel, chunkLabel, distanceLabel, sectionLabel]
+                    .filter(Boolean)
+                    .join(' · ');
+                body.textContent = data.content || t('chat.chunkContentEmpty');
+            };
+
+            const selectChunk = (index) => {
+                nodes.forEach((node, nodeIndex) => {
+                    node.classList.toggle('active', nodeIndex === index);
+                });
+                updateContent(index);
+            };
+
+            sortedResults.forEach((result, resultIndex) => {
+                const position = 8 + ((result.distance - minDistance) / distanceSpan) * 84;
+                const verticalOffset = resultIndex % 2 === 0 ? -14 : 14;
+
+                const node = document.createElement('button');
+                node.type = 'button';
+                node.className = 'chunk-diagram-node';
+                node.style.position = 'absolute';
+                node.style.left = `${position}%`;
+                node.style.top = `calc(50% + ${verticalOffset}px)`;
+                node.style.transform = 'translate(-50%, -50%)';
+                node.textContent = String(resultIndex + 1);
+                node.title = t('chat.chunkDistanceLabel', { distance: result.distance.toFixed(4) });
+                node.addEventListener('click', () => selectChunk(resultIndex));
+                nodes.set(resultIndex, node);
+                distanceMap.appendChild(node);
+            });
+
+            container.appendChild(distanceMap);
+            container.appendChild(panel);
+            selectChunk(0);
+
+            return container;
+        }
+
+        function createChunkNeighborDiagram({ filePath, chunkIndex, totalChunks, section, content, metaLabel }) {
+            const container = document.createElement('div');
+            container.className = 'chunk-diagram';
+            container.appendChild(buildChunkDiagramHeader({
+                title: t('chat.chunkMapTitle'),
+                filePath,
+                meta: metaLabel
+            }));
+
+            const grid = document.createElement('div');
+            grid.className = 'chunk-diagram-grid';
+
+            const line = document.createElement('div');
+            line.className = 'chunk-diagram-line';
+            grid.appendChild(line);
+
+            const chunkData = new Map();
+            chunkData.set(chunkIndex, { chunkIndex, totalChunks, section, content });
+
+            const nodeIndices = [chunkIndex - 1, chunkIndex, chunkIndex + 1];
+            const nodes = new Map();
+
+            const { panel, header, body } = buildChunkContentPanel();
+
+            const updateContent = (index, loaded = true) => {
+                const data = chunkData.get(index);
+                const chunkLabel = t('chat.chunkLabel', { current: index + 1, total: totalChunks });
+                const sectionLabel = data?.section ? `${t('chat.chunkSection')}: ${data.section}` : '';
+                header.textContent = sectionLabel ? `${chunkLabel} · ${sectionLabel}` : chunkLabel;
+                if (!loaded) {
+                    body.textContent = t('chat.chunkContentLoading');
+                    return;
+                }
+                body.textContent = data?.content || t('chat.chunkContentEmpty');
+            };
+
+            const selectChunk = async (index) => {
+                nodes.forEach((node, nodeIndex) => {
+                    node.classList.toggle('active', nodeIndex === index);
+                });
+
+                if (!chunkData.get(index)?.content) {
+                    updateContent(index, false);
+                    const cache = await loadChunkCache(filePath);
+                    const cachedChunk = cache?.get(index);
+                    if (cachedChunk) {
+                        chunkData.set(index, cachedChunk);
+                        nodes.get(index)?.classList.remove('pending');
+                        updateContent(index, true);
+                    } else {
+                        body.textContent = t('chat.chunkContentError');
+                    }
+                    return;
+                }
+                updateContent(index, true);
+            };
+
+            nodeIndices.forEach((nodeIndex) => {
+                if (nodeIndex < 0 || nodeIndex >= totalChunks) {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'chunk-diagram-node disabled';
+                    placeholder.textContent = '—';
+                    grid.appendChild(placeholder);
+                    return;
+                }
+
+                const node = document.createElement('button');
+                node.type = 'button';
+                node.className = 'chunk-diagram-node';
+                if (nodeIndex === chunkIndex) {
+                    node.classList.add('center');
+                }
+                if (!chunkData.get(nodeIndex)?.content) {
+                    node.classList.add('pending');
+                }
+                node.textContent = String(nodeIndex + 1);
+                node.title = t('chat.chunkLabel', { current: nodeIndex + 1, total: totalChunks });
+                node.addEventListener('click', () => selectChunk(nodeIndex));
+                nodes.set(nodeIndex, node);
+                grid.appendChild(node);
+            });
+
+            container.appendChild(grid);
+            container.appendChild(panel);
+            selectChunk(chunkIndex);
+
+            return container;
+        }
+
+        function createChunkSequenceDiagram({ filePath, chunks }) {
+            const container = document.createElement('div');
+            container.className = 'chunk-diagram';
+
+            const totalChunks = chunks[0]?.totalChunks || chunks.length;
+            container.appendChild(buildChunkDiagramHeader({
+                title: t('chat.chunkMapTitle'),
+                filePath,
+                meta: t('chat.chunkMapRange', { count: chunks.length })
+            }));
+
+            const track = document.createElement('div');
+            track.className = 'chunk-diagram-track';
+
+            const chunkData = new Map();
+            chunks
+                .slice()
+                .sort((a, b) => a.chunkIndex - b.chunkIndex)
+                .forEach((chunk) => chunkData.set(chunk.chunkIndex, chunk));
+
+            const { panel, header, body } = buildChunkContentPanel();
+            const nodes = new Map();
+
+            const updateContent = (index) => {
+                const data = chunkData.get(index);
+                const chunkLabel = t('chat.chunkLabel', { current: index + 1, total: totalChunks });
+                const sectionLabel = data?.section ? `${t('chat.chunkSection')}: ${data.section}` : '';
+                header.textContent = sectionLabel ? `${chunkLabel} · ${sectionLabel}` : chunkLabel;
+                body.textContent = data?.content || t('chat.chunkContentEmpty');
+            };
+
+            const selectChunk = async (index) => {
+                nodes.forEach((node, nodeIndex) => {
+                    node.classList.toggle('active', nodeIndex === index);
+                });
+
+                if (!chunkData.get(index)?.content) {
+                    body.textContent = t('chat.chunkContentLoading');
+                    const cache = await loadChunkCache(filePath);
+                    const cachedChunk = cache?.get(index);
+                    if (cachedChunk) {
+                        chunkData.set(index, cachedChunk);
+                        nodes.get(index)?.classList.remove('pending');
+                        updateContent(index);
+                    } else {
+                        body.textContent = t('chat.chunkContentError');
+                    }
+                    return;
+                }
+
+                updateContent(index);
+            };
+
+            chunkData.forEach((chunk, index) => {
+                const node = document.createElement('button');
+                node.type = 'button';
+                node.className = 'chunk-diagram-node';
+                node.textContent = String(index + 1);
+                node.title = t('chat.chunkLabel', { current: index + 1, total: totalChunks });
+                if (!chunk.content) {
+                    node.classList.add('pending');
+                }
+                node.addEventListener('click', () => selectChunk(index));
+                nodes.set(index, node);
+                track.appendChild(node);
+            });
+
+            container.appendChild(track);
+            container.appendChild(panel);
+
+            const firstIndex = chunkData.keys().next().value;
+            if (firstIndex !== undefined) {
+                selectChunk(firstIndex);
+            }
+
+            return container;
+        }
+
         function addMessageToUI(role, content, toolCalls = null) {
             const messagesEl = document.getElementById('chatMessages');
 
@@ -3027,6 +3585,11 @@
                     responseSection.innerHTML = `<strong>${t('chat.response')}:</strong><pre>${typeof tc.response === 'string' ? tc.response : JSON.stringify(tc.response, null, 2)}</pre>`;
 
                     toolCallDetails.appendChild(argsSection);
+
+                    const chunkDiagram = buildChunkDiagramForToolCall(tc, index);
+                    if (chunkDiagram) {
+                        toolCallDetails.appendChild(chunkDiagram);
+                    }
                     toolCallDetails.appendChild(responseSection);
 
                     toolCallDiv.appendChild(toolCallHeader);

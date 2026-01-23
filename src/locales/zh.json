@@ -86,7 +86,16 @@
     "hideDetails": "隐藏详情",
     "apiKeyRequired": "请输入 OpenAI API 密钥以进行聊天。",
     "arguments": "参数",
-    "response": "响应"
+    "response": "响应",
+    "chunkMapTitle": "Chunk map",
+    "chunkMapResult": "Result {{index}}",
+    "chunkMapRange": "{{count}} chunks",
+    "chunkLabel": "Chunk {{current}} of {{total}}",
+    "chunkSection": "Section",
+    "chunkDistanceLabel": "Distance {{distance}}",
+    "chunkContentEmpty": "No content loaded yet.",
+    "chunkContentLoading": "Loading chunk content...",
+    "chunkContentError": "Unable to load chunk content."
   },
   "ui": {
     "noProfileSelected": "未选择配置文件",

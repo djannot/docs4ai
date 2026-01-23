@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import * as sqliteVec from 'sqlite-vec';
+import { loadSqliteVec } from "./sqliteVec";
 import { DocumentChunk } from './processor';
 import { LOCAL_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION } from './embeddings';
 
@@ -16,7 +16,7 @@ export class DatabaseManager {
     constructor(dbPath: string, embeddingDimension: number = LOCAL_EMBEDDING_DIMENSION) {
         this.db = new Database(dbPath);
         this.embeddingDimension = embeddingDimension;
-        sqliteVec.load(this.db);
+        loadSqliteVec(this.db);
         this.createTables();
         
         // Prepare statements for insert/update (matching doc2vec's approach)

@@ -86,7 +86,16 @@
     "hideDetails": "विवरण छिपाएं",
     "apiKeyRequired": "कृपया चैट के लिए OpenAI API कुंजी दर्ज करें।",
     "arguments": "तर्क",
-    "response": "प्रतिक्रिया"
+    "response": "प्रतिक्रिया",
+    "chunkMapTitle": "Chunk map",
+    "chunkMapResult": "Result {{index}}",
+    "chunkMapRange": "{{count}} chunks",
+    "chunkLabel": "Chunk {{current}} of {{total}}",
+    "chunkSection": "Section",
+    "chunkDistanceLabel": "Distance {{distance}}",
+    "chunkContentEmpty": "No content loaded yet.",
+    "chunkContentLoading": "Loading chunk content...",
+    "chunkContentError": "Unable to load chunk content."
   },
   "ui": {
     "noProfileSelected": "कोई प्रोफ़ाइल चयनित नहीं",

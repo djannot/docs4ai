@@ -86,7 +86,16 @@
     "hideDetails": "إخفاء التفاصيل",
     "apiKeyRequired": "يرجى إدخال مفتاح OpenAI API للدردشة.",
     "arguments": "المعاملات",
-    "response": "الاستجابة"
+    "response": "الاستجابة",
+    "chunkMapTitle": "Chunk map",
+    "chunkMapResult": "Result {{index}}",
+    "chunkMapRange": "{{count}} chunks",
+    "chunkLabel": "Chunk {{current}} of {{total}}",
+    "chunkSection": "Section",
+    "chunkDistanceLabel": "Distance {{distance}}",
+    "chunkContentEmpty": "No content loaded yet.",
+    "chunkContentLoading": "Loading chunk content...",
+    "chunkContentError": "Unable to load chunk content."
   },
   "ui": {
     "noProfileSelected": "لم يتم تحديد ملف تعريف",
