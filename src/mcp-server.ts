@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
 import Database from 'better-sqlite3';
-import * as sqliteVec from 'sqlite-vec';
+import { loadSqliteVec } from "./sqliteVec";
 import { randomUUID } from 'crypto';
 import { EmbeddingService, EmbeddingProvider } from './embeddings';
 
@@ -79,7 +79,7 @@ export class McpServer {
         if (!this.db) {
             console.log('MCP Server: Creating new database connection');
             this.db = new Database(this.dbPath);
-            sqliteVec.load(this.db);
+            loadSqliteVec(this.db);
         }
 
         return this.db;
