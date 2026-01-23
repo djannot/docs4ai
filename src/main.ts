@@ -1195,8 +1195,9 @@ function setupIpcHandlers() {
         enableTools?: boolean;
         temperature?: number;
         maxTokens?: number;
+        requestId?: string;
     }) => {
-        const { profileId, messages, enableTools = true, temperature, maxTokens } = options;
+        const { profileId, messages, enableTools = true, temperature, maxTokens, requestId } = options;
 
         const state = profileStates.get(profileId);
         if (!state || !state.chatActive || !state.llmChatService) {
@@ -1217,7 +1218,16 @@ function setupIpcHandlers() {
                 messages,
                 temperature,
                 maxTokens,
-                mcpServerPort: mcpPort
+                mcpServerPort: mcpPort,
+                onToolCall: (toolCall: { name: string; arguments: any; response: any }) => {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('chat-tool-call', {
+                            profileId,
+                            requestId,
+                            toolCall
+                        });
+                    }
+                }
             };
 
             // Add tools if enabled and MCP server is running
@@ -1255,11 +1265,20 @@ function setupIpcHandlers() {
                     } catch {
                         parsedArgs = toolCall.function.arguments;
                     }
-                    executedToolCalls.push({
+                    const executedCall = {
                         name: toolCall.function.name,
                         arguments: parsedArgs,
                         response: toolResult
-                    });
+                    };
+                    executedToolCalls.push(executedCall);
+
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send('chat-tool-call', {
+                            profileId,
+                            requestId,
+                            toolCall: executedCall
+                        });
+                    }
 
                     // Add tool result to conversation
                     conversationMessages.push({

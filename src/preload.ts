@@ -34,6 +34,7 @@ interface ChatOptions {
     enableTools?: boolean;
     temperature?: number;
     maxTokens?: number;
+    requestId?: string;
 }
 
 interface ChatResult {
@@ -100,6 +101,9 @@ contextBridge.exposeInMainWorld('api', {
     },
     onChatError: (callback: (data: { profileId: string; error: string }) => void) => {
         ipcRenderer.on('chat-error', (_event: IpcRendererEvent, data) => callback(data));
+    },
+    onChatToolCall: (callback: (data: { profileId: string; requestId?: string; toolCall: { name: string; arguments: any; response: any } }) => void) => {
+        ipcRenderer.on('chat-tool-call', (_event: IpcRendererEvent, data) => callback(data));
     },
     onLlmDownloadProgress: (callback: (data: { profileId: string; status: string; file?: string; progress?: number; loaded?: number; total?: number; error?: string }) => void) => {
         ipcRenderer.on('llm-download-progress', (_event: IpcRendererEvent, data) => callback(data));

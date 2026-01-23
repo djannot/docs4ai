@@ -46,6 +46,7 @@ export interface ChatCompletionOptions {
     temperature?: number;
     maxTokens?: number;
     mcpServerPort?: number;
+    onToolCall?: (toolCall: { name: string; arguments: any; response: any }) => void;
 }
 
 export interface ChatCompletionResult {
@@ -500,6 +501,7 @@ export class LLMChatService {
 
                         const response = await executeMcpToolCall(toolCall, options.mcpServerPort);
                         executedToolCalls.push({ name: functionName, arguments: params, response });
+                        options.onToolCall?.({ name: functionName, arguments: params, response });
                         return response;
                     }
                 })];

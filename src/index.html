@@ -2765,6 +2765,9 @@
         let chatActive = false;
         let chatMessages = []; // Store conversation history
         let chatIsProcessing = false;
+        let currentChatRequestId = null;
+        let streamedToolCallCount = 0;
+        let hasStreamedToolCalls = false;
 
         // Save chat settings to profile
         async function saveChatSettings() {
@@ -3039,6 +3042,9 @@
             // Show typing indicator
             showTypingIndicator();
             chatIsProcessing = true;
+            currentChatRequestId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            streamedToolCallCount = 0;
+            hasStreamedToolCalls = false;
 
             try {
                 const llmProvider = document.getElementById('llmProvider').value;
@@ -3051,7 +3057,8 @@
                     llmProvider,
                     openaiApiKey: chatApiKey,
                     openaiModel: chatModel || 'gpt-5-mini',
-                    enableTools: true
+                    enableTools: true,
+                    requestId: currentChatRequestId
                 });
 
                 // Hide typing indicator
@@ -3059,7 +3066,7 @@
 
                 if (result.success) {
                     // Add assistant response to UI with tool calls if present
-                    addMessageToUI('assistant', result.message.content, result.toolCalls);
+                    addMessageToUI('assistant', result.message.content, hasStreamedToolCalls ? null : result.toolCalls);
 
                     // Add to conversation history
                     chatMessages.push(result.message);
@@ -3071,6 +3078,7 @@
                 showChatError(error.message);
             } finally {
                 chatIsProcessing = false;
+                currentChatRequestId = null;
             }
         }
 
@@ -3531,9 +3539,77 @@
             return container;
         }
 
-        function addMessageToUI(role, content, toolCalls = null) {
+        function appendChatElement(element) {
             const messagesEl = document.getElementById('chatMessages');
+            const typingIndicator = document.getElementById('chatTypingIndicator');
+            if (typingIndicator) {
+                messagesEl.insertBefore(element, typingIndicator);
+            } else {
+                messagesEl.appendChild(element);
+            }
 
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function buildToolCallElement(tc, index) {
+            const toolCallDiv = document.createElement('div');
+            toolCallDiv.className = 'chat-tool-call';
+
+            const toolCallHeader = document.createElement('div');
+            toolCallHeader.className = 'chat-tool-call-header';
+            toolCallHeader.innerHTML = `
+                <span class="tool-icon">🔧</span>
+                <span class="tool-name">${t('chat.toolCall')}: ${tc.name}</span>
+                <button class="tool-toggle" onclick="toggleToolDetails(this)">
+                    ${t('chat.showDetails')}
+                </button>
+            `;
+
+            const toolCallDetails = document.createElement('div');
+            toolCallDetails.className = 'chat-tool-call-details';
+            toolCallDetails.style.display = 'none';
+
+            const argsSection = document.createElement('div');
+            argsSection.className = 'chat-tool-call-args';
+            argsSection.innerHTML = `<strong>${t('chat.arguments')}:</strong><pre>${JSON.stringify(tc.arguments, null, 2)}</pre>`;
+
+            const responseSection = document.createElement('div');
+            responseSection.className = 'chat-tool-call-response';
+            responseSection.innerHTML = `<strong>${t('chat.response')}:</strong><pre>${typeof tc.response === 'string' ? tc.response : JSON.stringify(tc.response, null, 2)}</pre>`;
+
+            toolCallDetails.appendChild(argsSection);
+
+            const chunkDiagram = buildChunkDiagramForToolCall(tc, index);
+            if (chunkDiagram) {
+                toolCallDetails.appendChild(chunkDiagram);
+            }
+            toolCallDetails.appendChild(responseSection);
+
+            toolCallDiv.appendChild(toolCallHeader);
+            toolCallDiv.appendChild(toolCallDetails);
+
+            return toolCallDiv;
+        }
+
+        function addToolCallToUI(toolCall, index) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message assistant';
+
+            const roleLabel = document.createElement('div');
+            roleLabel.className = 'chat-message-role';
+            roleLabel.textContent = t('chat.toolCall');
+
+            const toolCallsContainer = document.createElement('div');
+            toolCallsContainer.className = 'chat-tool-calls';
+            toolCallsContainer.appendChild(buildToolCallElement(toolCall, index));
+
+            messageDiv.appendChild(roleLabel);
+            messageDiv.appendChild(toolCallsContainer);
+
+            appendChatElement(messageDiv);
+        }
+
+        function addMessageToUI(role, content, toolCalls = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-message ${role}`;
 
@@ -3559,52 +3635,14 @@
                 toolCallsContainer.className = 'chat-tool-calls';
 
                 toolCalls.forEach((tc, index) => {
-                    const toolCallDiv = document.createElement('div');
-                    toolCallDiv.className = 'chat-tool-call';
-
-                    const toolCallHeader = document.createElement('div');
-                    toolCallHeader.className = 'chat-tool-call-header';
-                    toolCallHeader.innerHTML = `
-                        <span class="tool-icon">🔧</span>
-                        <span class="tool-name">${t('chat.toolCall')}: ${tc.name}</span>
-                        <button class="tool-toggle" onclick="toggleToolDetails(this)">
-                            ${t('chat.showDetails')}
-                        </button>
-                    `;
-
-                    const toolCallDetails = document.createElement('div');
-                    toolCallDetails.className = 'chat-tool-call-details';
-                    toolCallDetails.style.display = 'none';
-
-                    const argsSection = document.createElement('div');
-                    argsSection.className = 'chat-tool-call-args';
-                    argsSection.innerHTML = `<strong>${t('chat.arguments')}:</strong><pre>${JSON.stringify(tc.arguments, null, 2)}</pre>`;
-
-                    const responseSection = document.createElement('div');
-                    responseSection.className = 'chat-tool-call-response';
-                    responseSection.innerHTML = `<strong>${t('chat.response')}:</strong><pre>${typeof tc.response === 'string' ? tc.response : JSON.stringify(tc.response, null, 2)}</pre>`;
-
-                    toolCallDetails.appendChild(argsSection);
-
-                    const chunkDiagram = buildChunkDiagramForToolCall(tc, index);
-                    if (chunkDiagram) {
-                        toolCallDetails.appendChild(chunkDiagram);
-                    }
-                    toolCallDetails.appendChild(responseSection);
-
-                    toolCallDiv.appendChild(toolCallHeader);
-                    toolCallDiv.appendChild(toolCallDetails);
-                    toolCallsContainer.appendChild(toolCallDiv);
+                    toolCallsContainer.appendChild(buildToolCallElement(tc, index));
                 });
 
                 messageDiv.appendChild(toolCallsContainer);
             }
 
             messageDiv.appendChild(contentDiv);
-            messagesEl.appendChild(messageDiv);
-
-            // Scroll to bottom
-            messagesEl.scrollTop = messagesEl.scrollHeight;
+            appendChatElement(messageDiv);
         }
 
         function toggleToolDetails(button) {
@@ -3647,6 +3685,16 @@
                 indicator.remove();
             }
         }
+
+        // Listen for streamed tool calls
+        window.api.onChatToolCall((data) => {
+            if (data.profileId !== activeProfileId) return;
+            if (!currentChatRequestId || data.requestId !== currentChatRequestId) return;
+
+            streamedToolCallCount += 1;
+            hasStreamedToolCalls = true;
+            addToolCallToUI(data.toolCall, streamedToolCallCount - 1);
+        });
 
         // Listen for LLM download progress
         window.api.onLlmDownloadProgress((data) => {
