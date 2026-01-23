@@ -4,11 +4,25 @@ import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
 import type { ChatHistoryItem, Llama, LlamaChatSession, LlamaContext, LlamaModel } from 'node-llama-cpp';
-import { QWEN3_CHAT_MODEL } from './llama-server';
+import { QWEN3_CHAT_MODEL, QWEN3_4B_CHAT_MODEL } from './llama-server';
 import { getModelCacheDir } from './embeddings';
 
 // LLM Provider types
-export type LLMProvider = 'local-qwen3' | 'openai';
+export type LLMProvider = 'local-qwen3' | 'local-qwen3-4b' | 'openai';
+
+type LocalLLMProvider = Exclude<LLMProvider, 'openai'>;
+
+interface LocalChatModelConfig {
+    repoId: string;
+    filename: string;
+    name: string;
+    type: 'chat';
+}
+
+const LOCAL_CHAT_MODELS: Record<LocalLLMProvider, LocalChatModelConfig> = {
+    'local-qwen3': QWEN3_CHAT_MODEL,
+    'local-qwen3-4b': QWEN3_4B_CHAT_MODEL
+};
 
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant' | 'tool';
@@ -131,6 +145,7 @@ export class LLMChatService {
     private model: LlamaModel | null = null;
     private context: LlamaContext | null = null;
     private session: LlamaChatSession | null = null;
+    private localModelConfig: LocalChatModelConfig | null = null;
 
     constructor(provider: LLMProvider, apiKey?: string, model?: string, contextLength?: number) {
         this.provider = provider;
@@ -145,6 +160,8 @@ export class LLMChatService {
             this.openaiApiKey = apiKey;
             this.openaiModel = model || 'gpt-5-mini';
             this.openaiClient = new OpenAI({ apiKey });
+        } else {
+            this.localModelConfig = LOCAL_CHAT_MODELS[provider];
         }
     }
 
@@ -179,15 +196,20 @@ export class LLMChatService {
             return;
         }
 
-        console.log(`[LLMChat] Downloading model ${QWEN3_CHAT_MODEL.name}...`);
+        const localModel = this.localModelConfig;
+        if (!localModel) {
+            throw new Error('Local model configuration missing');
+        }
+
+        console.log(`[LLMChat] Downloading model ${localModel.name}...`);
         this.reportDownloadProgress({
             status: 'downloading',
-            file: QWEN3_CHAT_MODEL.filename,
+            file: localModel.filename,
             progress: 0
         });
 
-        await this.downloadModel(QWEN3_CHAT_MODEL.repoId, QWEN3_CHAT_MODEL.filename, modelPath);
-        this.reportDownloadProgress({ status: 'ready', file: QWEN3_CHAT_MODEL.filename, progress: 100 });
+        await this.downloadModel(localModel.repoId, localModel.filename, modelPath);
+        this.reportDownloadProgress({ status: 'ready', file: localModel.filename, progress: 100 });
     }
 
     private async downloadModel(repoId: string, filename: string, targetPath: string): Promise<void> {
@@ -205,7 +227,7 @@ export class LLMChatService {
                 if (response.statusCode === 302 || response.statusCode === 301) {
                     const redirectUrl = response.headers.location;
                     if (redirectUrl) {
-                        this.downloadFromUrl(redirectUrl, targetPath)
+                        this.downloadFromUrl(redirectUrl, targetPath, filename)
                             .then(resolve)
                             .catch(reject);
                         return;
@@ -249,7 +271,7 @@ export class LLMChatService {
         });
     }
 
-    private async downloadFromUrl(url: string, targetPath: string): Promise<void> {
+    private async downloadFromUrl(url: string, targetPath: string, filename: string): Promise<void> {
         return new Promise((resolve, reject) => {
             const protocol = url.startsWith('https') ? https : http;
 
@@ -269,7 +291,7 @@ export class LLMChatService {
                     const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0;
                     this.reportDownloadProgress({
                         status: 'downloading',
-                        file: QWEN3_CHAT_MODEL.filename,
+                        file: filename,
                         progress: percent
                     });
                 });
@@ -296,13 +318,17 @@ export class LLMChatService {
             return;
         }
 
-        const modelsDir = getModelCacheDir();
-        const modelPath = path.join(modelsDir, QWEN3_CHAT_MODEL.filename);
-        await this.downloadModelIfNeeded(modelPath);
+        const localModel = this.localModelConfig;
+        if (!localModel) {
+            throw new Error('Local model configuration missing');
+        }
 
+        const modelsDir = getModelCacheDir();
+        const modelPath = path.join(modelsDir, localModel.filename);
         const nodeLlama = await this.loadNodeLlama();
         const llama = await nodeLlama.getLlama();
-        const model = await llama.loadModel({ modelPath });
+
+        const model = await this.loadLocalModelWithRetry(modelPath, llama, localModel.filename);
         const context = await model.createContext({
             contextSize: this.contextLength,
             threads: 4
@@ -317,6 +343,25 @@ export class LLMChatService {
         this.session = session;
 
         console.log('[LLMChat] Local model ready');
+    }
+
+    private async loadLocalModelWithRetry(modelPath: string, llama: Llama, filename: string): Promise<LlamaModel> {
+        try {
+            await this.downloadModelIfNeeded(modelPath);
+            return await llama.loadModel({ modelPath });
+        } catch (error) {
+            if (fs.existsSync(modelPath)) {
+                console.warn(`[LLMChat] Removing corrupted model file: ${filename}`);
+                try {
+                    fs.unlinkSync(modelPath);
+                } catch (unlinkError) {
+                    console.error('[LLMChat] Failed to remove corrupted model file', unlinkError);
+                }
+            }
+
+            await this.downloadModelIfNeeded(modelPath);
+            return await llama.loadModel({ modelPath });
+        }
     }
 
     private buildChatHistory(messages: ChatMessage[]): { history: ChatHistoryItem[]; prompt: string } {

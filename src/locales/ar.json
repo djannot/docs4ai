@@ -62,6 +62,7 @@
     "llmContextLengthInfo": "الحد الأقصى لطول السياق لنموذج LLM المحلي. القيم الأعلى تستخدم المزيد من الذاكرة.",
     "openaiOption": "OpenAI",
     "localQwen3Option": "Qwen3 المحلي (1.7B, ~1GB)",
+    "localQwen34BOption": "Qwen3 المحلي (4B, ~2.5GB)",
     "openaiInfo": "يستخدم واجهة برمجة تطبيقات OpenAI للدردشة. يتطلب مفتاح API.",
     "localInfo": "يستخدم نموذج Qwen3 المحلي. مجاني، يتم تحميله عند الاستخدام الأول.",
     "apiKeyLabel": "مفتاح OpenAI API",

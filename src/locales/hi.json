@@ -62,6 +62,7 @@
     "llmContextLengthInfo": "स्थानीय LLM मॉडल के लिए अधिकतम संदर्भ लंबाई। उच्च मान अधिक मेमोरी का उपयोग करते हैं।",
     "openaiOption": "OpenAI",
     "localQwen3Option": "स्थानीय Qwen3 (1.7B, ~1GB)",
+    "localQwen34BOption": "स्थानीय Qwen3 (4B, ~2.5GB)",
     "openaiInfo": "चैट के लिए OpenAI API का उपयोग करता है। API कुंजी आवश्यक।",
     "localInfo": "स्थानीय Qwen3 मॉडल का उपयोग करता है। मुफ्त, पहले उपयोग पर डाउनलोड होता है।",
     "apiKeyLabel": "OpenAI API कुंजी",

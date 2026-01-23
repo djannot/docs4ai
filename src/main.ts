@@ -35,7 +35,7 @@ interface ProfileSettings {
     llmContextLength?: number;  // Context length for local LLM chat model (default: 8192)
     llmChatApiKey?: string;  // OpenAI API key for LLM chat (separate from embeddings)
     llmChatModel?: string;  // OpenAI model for LLM chat (default: 'gpt-4o-mini')
-    llmProvider?: LLMProvider;  // 'openai' or 'local-qwen3'
+    llmProvider?: LLMProvider;  // 'openai' or local Qwen3 variants
 }
 
 interface AppSettings {
@@ -1126,7 +1126,7 @@ function setupIpcHandlers() {
                 state.llmChatService = new LLMChatService(llmProvider, openaiApiKey, openaiModel, profile.llmContextLength);
 
                 // Set up download progress callback for local model
-                if (llmProvider === 'local-qwen3') {
+                if (llmProvider !== 'openai') {
                     state.llmChatService.setDownloadProgressCallback((progress) => {
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('llm-download-progress', {

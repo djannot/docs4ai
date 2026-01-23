@@ -662,6 +662,13 @@ export const QWEN3_CHAT_MODEL = {
     type: 'chat' as const
 };
 
+export const QWEN3_4B_CHAT_MODEL = {
+    repoId: 'Qwen/Qwen3-4B-GGUF',
+    filename: 'Qwen3-4B-Q4_K_M.gguf',
+    name: 'Qwen3 4B',
+    type: 'chat' as const
+};
+
 // Default model configuration for Qwen3 Embeddings
 export const QWEN3_EMBEDDING_MODEL = {
     repoId: 'Qwen/Qwen3-Embedding-0.6B-GGUF',

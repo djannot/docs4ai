@@ -28,7 +28,7 @@ interface ChatMessage {
 interface ChatOptions {
     profileId: string;
     messages: ChatMessage[];
-    llmProvider: 'local-qwen3' | 'openai';
+    llmProvider: 'local-qwen3' | 'local-qwen3-4b' | 'openai';
     openaiApiKey?: string;
     openaiModel?: string;
     enableTools?: boolean;
@@ -91,7 +91,7 @@ contextBridge.exposeInMainWorld('api', {
     },
 
     // Chat API
-    startChat: (profileId: string, llmProvider: 'local-qwen3' | 'openai', openaiApiKey?: string, openaiModel?: string) =>
+    startChat: (profileId: string, llmProvider: 'local-qwen3' | 'local-qwen3-4b' | 'openai', openaiApiKey?: string, openaiModel?: string) =>
         ipcRenderer.invoke('start-chat', profileId, llmProvider, openaiApiKey, openaiModel),
     stopChat: (profileId: string) => ipcRenderer.invoke('stop-chat', profileId),
     sendChatMessage: (options: ChatOptions) => ipcRenderer.invoke('send-chat-message', options),

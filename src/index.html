@@ -934,6 +934,7 @@
                 <select id="llmProvider" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
                     <option value="openai" data-i18n="chat.openaiOption">OpenAI</option>
                     <option value="local-qwen3" data-i18n="chat.localQwen3Option">Local Qwen3 (1.7B, ~1GB)</option>
+                    <option value="local-qwen3-4b" data-i18n="chat.localQwen34BOption">Local Qwen3 (4B, ~2.5GB)</option>
                 </select>
                 <div class="info" id="llmProviderInfo" style="margin-top: 4px;" data-i18n="chat.openaiInfo">
                     Uses OpenAI API for chat. Requires API key.
@@ -2904,7 +2905,7 @@
             }
 
             // For local models, show download progress and wait for model to be ready
-            if (llmProvider === 'local-qwen3') {
+            if (llmProvider !== 'openai') {
                 const openBtn = document.getElementById('openChatBtn');
                 openBtn.disabled = true;
                 openBtn.textContent = t('ui.loadingModel');

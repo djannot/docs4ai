@@ -62,6 +62,7 @@
     "llmContextLengthInfo": "Comprimento máximo do contexto para o modelo LLM local. Valores mais altos usam mais memória.",
     "openaiOption": "OpenAI",
     "localQwen3Option": "Qwen3 Local (1.7B, ~1GB)",
+    "localQwen34BOption": "Qwen3 Local (4B, ~2.5GB)",
     "openaiInfo": "Usa a API da OpenAI para o chat. Requer chave API.",
     "localInfo": "Usa o modelo Qwen3 local. Gratuito, baixado no primeiro uso.",
     "apiKeyLabel": "Chave API OpenAI",
