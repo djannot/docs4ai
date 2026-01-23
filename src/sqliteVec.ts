@@ -11,7 +11,11 @@ function extFileName() {
 
 function pkgDirName() {
   if (process.platform === "win32") return "sqlite-vec-windows-x64";
-  if (process.platform === "darwin") return "sqlite-vec-darwin-x64";
+  if (process.platform === "darwin") {
+    return process.arch === "arm64"
+      ? "sqlite-vec-darwin-arm64"
+      : "sqlite-vec-darwin-x64";
+  }
   return "sqlite-vec-linux-x64";
 }
 
