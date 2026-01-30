@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { loadSqliteVec } from "./sqliteVec";
+import { loadSqliteVec } from './sqliteVec';
 import { DocumentChunk } from './processor';
 import { LOCAL_EMBEDDING_DIMENSION, OPENAI_EMBEDDING_DIMENSION } from './embeddings';
 
@@ -7,6 +7,8 @@ export class DatabaseManager {
     private db: Database.Database;
     private insertStmt: Database.Statement;
     private updateStmt: Database.Statement;
+    private ftsInsertStmt: Database.Statement;
+    private ftsDeleteStmt: Database.Statement;
     private embeddingDimension: number;
     
     // Cache counts for immediate UI feedback
@@ -28,6 +30,11 @@ export class DatabaseManager {
             UPDATE vec_items SET embedding = ?, heading_hierarchy = ?, section = ?, content = ?, url = ?, hash = ?, chunk_index = ?, total_chunks = ?
             WHERE chunk_id = ?
         `);
+        this.ftsInsertStmt = this.db.prepare(`
+            INSERT INTO fts_chunks (content, section, heading_hierarchy, url, chunk_id)
+            VALUES (?, ?, ?, ?, ?)
+        `);
+        this.ftsDeleteStmt = this.db.prepare('DELETE FROM fts_chunks WHERE chunk_id = ?');
         
         // Initialize counts from database
         this._trackedFilesCount = this._queryTrackedFilesCount();
@@ -79,6 +86,25 @@ export class DatabaseManager {
                     chunk_index INTEGER,
                     total_chunks INTEGER
                 )
+            `);
+        }
+
+        const ftsExists = this.db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='fts_chunks'"
+        ).get();
+        if (!ftsExists) {
+            this.db.exec(`
+                CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
+                    content,
+                    section,
+                    heading_hierarchy,
+                    url,
+                    chunk_id UNINDEXED
+                )
+            `);
+            this.db.exec(`
+                INSERT INTO fts_chunks (content, section, heading_hierarchy, url, chunk_id)
+                SELECT content, section, heading_hierarchy, url, chunk_id FROM vec_items
             `);
         }
 
@@ -164,6 +190,14 @@ export class DatabaseManager {
                 BigInt(chunk.chunkIndex),
                 BigInt(chunk.totalChunks)
             );
+            this.ftsDeleteStmt.run(chunk.chunkId);
+            this.ftsInsertStmt.run(
+                chunk.content,
+                chunk.section,
+                headingHierarchyJson,
+                chunk.url,
+                chunk.chunkId
+            );
             this._totalChunksCount++;
         } catch (error: any) {
             // If insert fails due to UNIQUE constraint, update instead
@@ -177,6 +211,14 @@ export class DatabaseManager {
                     chunk.hash,
                     BigInt(chunk.chunkIndex),
                     BigInt(chunk.totalChunks),
+                    chunk.chunkId
+                );
+                this.ftsDeleteStmt.run(chunk.chunkId);
+                this.ftsInsertStmt.run(
+                    chunk.content,
+                    chunk.section,
+                    headingHierarchyJson,
+                    chunk.url,
                     chunk.chunkId
                 );
                 // Update doesn't change count
@@ -195,6 +237,7 @@ export class DatabaseManager {
         
         const stmt = this.db.prepare('DELETE FROM vec_items WHERE url = ?');
         stmt.run(url);
+        this.db.prepare('DELETE FROM fts_chunks WHERE url = ?').run(url);
         
         this._totalChunksCount -= deletedCount;
     }
@@ -290,6 +333,7 @@ export class DatabaseManager {
 
     clearAllData() {
         this.db.exec('DELETE FROM vec_items');
+        this.db.exec('DELETE FROM fts_chunks');
         this.db.exec('DELETE FROM files');
         this._trackedFilesCount = 0;
         this._totalChunksCount = 0;

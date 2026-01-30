@@ -89,7 +89,7 @@ export const MCP_TOOLS: ToolDefinition[] = [
         type: 'function',
         function: {
             name: 'query_documents',
-            description: 'Search through synced documents using semantic vector search. Returns relevant document chunks based on the query.',
+            description: 'Search through synced documents using hybrid search (semantic vectors + keyword FTS5). Returns relevant document chunks based on the query.',
             parameters: {
                 type: 'object',
                 properties: {

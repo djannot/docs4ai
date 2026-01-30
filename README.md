@@ -177,6 +177,16 @@ curl -X POST http://localhost:3333/query \
   -d '{"queryText": "How do I configure X?", "limit": 5}'
 ```
 
+## Hybrid Search
+
+Docs4ai uses hybrid search to combine exact keyword matching (FTS5) with semantic vector similarity (sqlite-vec). Results are fused with Reciprocal Rank Fusion (RRF) using k=60:
+
+```text
+score = 1 / (60 + rank_fts) + 1 / (60 + rank_vector)
+```
+
+This keeps part numbers and exact phrases accurate while still surfacing conceptually related documents.
+
 ## Integration with External MCP Server
 
 The database is also compatible with the doc2vec MCP server:
@@ -207,6 +217,18 @@ CREATE VIRTUAL TABLE vec_items USING vec0(
 ```
 
 The database schema automatically adjusts to match your selected embedding provider's output dimensions.
+
+An FTS5 table keeps keyword search fast and is kept in sync with vector data:
+
+```sql
+CREATE VIRTUAL TABLE fts_chunks USING fts5(
+    content,
+    section,
+    heading_hierarchy,
+    url,
+    chunk_id UNINDEXED
+)
+```
 
 ## Incremental Sync
 

@@ -18,7 +18,8 @@ interface SessionData {
 
 interface QueryResult {
     chunk_id: string;
-    distance: number;
+    distance: number | null;
+    rrf_score: number;
     content: string;
     url: string;
     section: string;
@@ -41,6 +42,12 @@ interface JsonRpcRequest {
     id?: string | number;
     method: string;
     params?: any;
+}
+
+function toFtsPhraseQuery(text: string): string {
+    const escaped = text.replace(/"/g, '""').trim();
+    if (!escaped) return '""';
+    return `"${escaped}"`;
 }
 
 export class McpServer {
@@ -223,7 +230,7 @@ export class McpServer {
             res.json({
                 tools: [{
                     name: 'query_documents',
-                    description: 'Search through synced documents using semantic vector search.',
+                    description: 'Search through synced documents using hybrid search (semantic vectors + keyword FTS5).',
                     inputSchema: {
                         type: 'object',
                         properties: {
@@ -329,7 +336,7 @@ export class McpServer {
                                 tools: [
                                     {
                                         name: 'query_documents',
-                                        description: 'Search through synced documents using semantic vector search. Returns relevant document chunks with their chunk_index and total_chunks so you can retrieve additional chunks from the same document using get_chunks.',
+                                        description: 'Search through synced documents using hybrid search (semantic vectors + keyword FTS5). Returns relevant document chunks with their chunk_index and total_chunks so you can retrieve additional chunks from the same document using get_chunks.',
                                         inputSchema: {
                                             type: 'object',
                                             properties: {
@@ -429,14 +436,15 @@ export class McpServer {
                                     return;
                                 }
 
-                                const formatted = results.map((r, i) => 
-                                    `**Result ${i + 1}** (distance: ${r.distance.toFixed(4)})\n` +
+                                const formatted = results.map((r, i) => {
+                                    const distance = r.distance === null ? 'n/a' : r.distance.toFixed(4);
+                                    return `**Result ${i + 1}** (rrf: ${r.rrf_score.toFixed(4)}, distance: ${distance})\n` +
                                     `File: ${r.url}\n` +
                                     `Section: ${r.section}\n` +
                                     `Chunk: ${r.chunk_index + 1} of ${r.total_chunks}\n` +
                                     `${r.content}\n` +
-                                    `---`
-                                ).join('\n\n');
+                                    `---`;
+                                }).join('\n\n');
 
                                 res.json({
                                     jsonrpc: '2.0',
@@ -593,7 +601,11 @@ export class McpServer {
         // Query database using cached connection
         const db = this.getDatabase();
 
-        const stmt = db.prepare(`
+        const candidateLimit = Math.min(limit * 5, 50);
+        const rrfK = 60;
+        const ftsQuery = toFtsPhraseQuery(queryText);
+
+        const vectorStmt = db.prepare(`
             SELECT
                 chunk_id,
                 distance,
@@ -605,12 +617,61 @@ export class McpServer {
                 total_chunks
             FROM vec_items
             WHERE embedding MATCH ?
-            ORDER BY distance
             LIMIT ?
         `);
 
-        const rows = stmt.all(new Float32Array(queryEmbedding), limit) as QueryResult[];
-        return rows;
+        const ftsStmt = db.prepare(`
+            SELECT
+                vec_items.chunk_id,
+                vec_items.content,
+                vec_items.url,
+                vec_items.section,
+                vec_items.heading_hierarchy,
+                vec_items.chunk_index,
+                vec_items.total_chunks
+            FROM fts_chunks
+            JOIN vec_items ON vec_items.chunk_id = fts_chunks.chunk_id
+            WHERE fts_chunks MATCH ?
+            ORDER BY bm25(fts_chunks)
+            LIMIT ?
+        `);
+
+        const vectorResults = vectorStmt.all(
+            new Float32Array(queryEmbedding),
+            candidateLimit
+        ) as QueryResult[];
+        const ftsResults = ftsStmt.all(ftsQuery, candidateLimit) as QueryResult[];
+
+        const combined = new Map<string, QueryResult>();
+
+        vectorResults.forEach((result, index) => {
+            const rrfScore = 1 / (rrfK + index + 1);
+            combined.set(result.chunk_id, {
+                ...result,
+                rrf_score: rrfScore
+            });
+        });
+
+        ftsResults.forEach((result, index) => {
+            const rrfScore = 1 / (rrfK + index + 1);
+            const existing = combined.get(result.chunk_id);
+            if (existing) {
+                existing.rrf_score += rrfScore;
+                return;
+            }
+
+            combined.set(result.chunk_id, {
+                ...result,
+                distance: null,
+                rrf_score: rrfScore
+            });
+        });
+
+        const results = Array.from(combined.values())
+            .sort((a, b) => b.rrf_score - a.rrf_score)
+            .slice(0, limit);
+
+        return results;
     }
 
     private getChunksForFile(filePath: string, startIndex?: number, endIndex?: number): ChunkResult[] {
