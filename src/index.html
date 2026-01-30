@@ -1380,6 +1380,25 @@
             transition: all 0.15s ease;
         }
 
+        .chunk-diagram-node.match-semantic {
+            background: #e5f0ff;
+            border-color: #4f86d9;
+            color: #1f4f8f;
+        }
+
+        .chunk-diagram-node.match-keyword {
+            background: #ffe9e2;
+            border-color: #de6b4e;
+            color: #8b3a24;
+        }
+
+        .chunk-diagram-node.match-hybrid {
+            background: #efe7ff;
+            border-color: #7a5bdb;
+            color: #3e2a83;
+            box-shadow: inset 0 0 0 1px rgba(122, 91, 219, 0.35);
+        }
+
         .chunk-diagram-node:hover {
             border-color: #0071e3;
             color: #1f5aa6;
@@ -3185,17 +3204,19 @@
         function parseQueryDocumentsResponse(responseText) {
             if (!responseText || !responseText.includes('**Result')) return [];
             const results = [];
-            const resultRegex = /\*\*Result\s+\d+\*\*\s*\(distance:\s*([0-9.]+)\)\nFile:\s*(.+)\nSection:\s*(.*)\nChunk:\s*(\d+)\s+of\s+(\d+)\n([\s\S]*?)(?=\n\*\*Result|\n?$)/g;
+            const resultRegex = /\*\*Result\s+\d+\*\*\s*\(rrf:\s*([0-9.]+),\s*distance:\s*([0-9.]+|n\/a),\s*match:\s*(semantic|keyword|hybrid)\)\nFile:\s*(.+)\nSection:\s*(.*)\nChunk:\s*(\d+)\s+of\s+(\d+)\n([\s\S]*?)(?=\n\*\*Result|\n?$)/g;
             let match;
             while ((match = resultRegex.exec(responseText)) !== null) {
-                const [, distance, filePath, section, chunkNumber, totalChunks, content] = match;
+                const [, rrfScore, distanceRaw, matchType, filePath, section, chunkNumber, totalChunks, content] = match;
                 results.push({
                     filePath: filePath.trim(),
                     section: section.trim(),
                     chunkIndex: Number(chunkNumber) - 1,
                     totalChunks: Number(totalChunks),
                     content: cleanChunkContent(content),
-                    distance: Number(distance)
+                    distance: distanceRaw === 'n/a' ? null : Number(distanceRaw),
+                    rrfScore: Number(rrfScore),
+                    matchType
                 });
             }
             return results;
@@ -3300,8 +3321,9 @@
         function createChunkDistanceDiagram(results) {
             const sortedResults = results
                 .slice()
-                .sort((a, b) => a.distance - b.distance)
-                .slice(0, 5);
+                .filter((result) => result.rrfScore > 0)
+                .sort((a, b) => b.rrfScore - a.rrfScore)
+                .slice(0, 7);
 
             const container = document.createElement('div');
             container.className = 'chunk-diagram';
@@ -3321,10 +3343,10 @@
             const { panel, header, body } = buildChunkContentPanel();
             const nodes = new Map();
 
-            const distances = sortedResults.map((result) => result.distance);
-            const minDistance = Math.min(...distances);
-            const maxDistance = Math.max(...distances);
-            const distanceSpan = Math.max(maxDistance - minDistance, 0.0001);
+            const scores = sortedResults.map((result) => result.rrfScore);
+            const minScore = Math.min(...scores);
+            const maxScore = Math.max(...scores);
+            const scoreSpan = Math.max(maxScore - minScore, 0.0001);
 
             const updateContent = (index) => {
                 const data = sortedResults[index];
@@ -3333,9 +3355,10 @@
                     total: data.totalChunks
                 });
                 const fileLabel = getChunkFileLabel(data.filePath);
-                const distanceLabel = t('chat.chunkDistanceLabel', { distance: data.distance.toFixed(4) });
+                const rrfLabel = `RRF: ${data.rrfScore.toFixed(4)}`;
+                const matchLabel = data.matchType ? `Match: ${data.matchType}` : '';
                 const sectionLabel = data.section ? `${t('chat.chunkSection')}: ${data.section}` : '';
-                header.textContent = [fileLabel, chunkLabel, distanceLabel, sectionLabel]
+                header.textContent = [fileLabel, chunkLabel, matchLabel, rrfLabel, sectionLabel]
                     .filter(Boolean)
                     .join(' · ');
                 body.textContent = data.content || t('chat.chunkContentEmpty');
@@ -3349,18 +3372,18 @@
             };
 
             sortedResults.forEach((result, resultIndex) => {
-                const position = 8 + ((result.distance - minDistance) / distanceSpan) * 84;
+                const position = 8 + ((result.rrfScore - minScore) / scoreSpan) * 84;
                 const verticalOffset = resultIndex % 2 === 0 ? -14 : 14;
 
                 const node = document.createElement('button');
                 node.type = 'button';
-                node.className = 'chunk-diagram-node';
+                node.className = `chunk-diagram-node match-${result.matchType || 'semantic'}`;
                 node.style.position = 'absolute';
                 node.style.left = `${position}%`;
                 node.style.top = `calc(50% + ${verticalOffset}px)`;
                 node.style.transform = 'translate(-50%, -50%)';
                 node.textContent = String(resultIndex + 1);
-                node.title = t('chat.chunkDistanceLabel', { distance: result.distance.toFixed(4) });
+                node.title = `${result.matchType} · RRF ${result.rrfScore.toFixed(4)}`;
                 node.addEventListener('click', () => selectChunk(resultIndex));
                 nodes.set(resultIndex, node);
                 distanceMap.appendChild(node);

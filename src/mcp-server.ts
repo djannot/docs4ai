@@ -20,6 +20,7 @@ interface QueryResult {
     chunk_id: string;
     distance: number | null;
     rrf_score: number;
+    match_type?: 'semantic' | 'keyword' | 'hybrid';
     content: string;
     url: string;
     section: string;
@@ -44,10 +45,16 @@ interface JsonRpcRequest {
     params?: any;
 }
 
-function toFtsPhraseQuery(text: string): string {
-    const escaped = text.replace(/"/g, '""').trim();
-    if (!escaped) return '""';
-    return `"${escaped}"`;
+function buildFtsQuery(text: string): { query: string; termCount: number } {
+    const cleaned = text.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+    const words = cleaned.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+        return { query: '', termCount: 0 };
+    }
+    return {
+        query: words.map(word => `${word}*`).join(' AND '),
+        termCount: words.length
+    };
 }
 
 export class McpServer {
@@ -438,7 +445,8 @@ export class McpServer {
 
                                 const formatted = results.map((r, i) => {
                                     const distance = r.distance === null ? 'n/a' : r.distance.toFixed(4);
-                                    return `**Result ${i + 1}** (rrf: ${r.rrf_score.toFixed(4)}, distance: ${distance})\n` +
+                                    const matchType = r.match_type || 'semantic';
+                                    return `**Result ${i + 1}** (rrf: ${r.rrf_score.toFixed(4)}, distance: ${distance}, match: ${matchType})\n` +
                                     `File: ${r.url}\n` +
                                     `Section: ${r.section}\n` +
                                     `Chunk: ${r.chunk_index + 1} of ${r.total_chunks}\n` +
@@ -603,7 +611,9 @@ export class McpServer {
 
         const candidateLimit = Math.min(limit * 5, 50);
         const rrfK = 60;
-        const ftsQuery = toFtsPhraseQuery(queryText);
+        const { query: ftsQuery, termCount } = buildFtsQuery(queryText);
+        const vectorWeight = termCount >= 5 ? 1.2 : 1.0;
+        const ftsWeight = termCount > 0 && termCount <= 2 ? 1.2 : 1.0;
 
         const vectorStmt = db.prepare(`
             SELECT
@@ -616,8 +626,8 @@ export class McpServer {
                 chunk_index,
                 total_chunks
             FROM vec_items
-            WHERE embedding MATCH ?
-            LIMIT ?
+            WHERE embedding MATCH ? AND k = ?
+            ORDER BY distance
         `);
 
         const ftsStmt = db.prepare(`
@@ -640,29 +650,44 @@ export class McpServer {
             new Float32Array(queryEmbedding),
             candidateLimit
         ) as QueryResult[];
-        const ftsResults = ftsStmt.all(ftsQuery, candidateLimit) as QueryResult[];
+        const ftsResults = ftsQuery
+            ? (ftsStmt.all(ftsQuery, candidateLimit) as QueryResult[])
+            : [];
 
         const combined = new Map<string, QueryResult>();
+        const vectorDistanceById = new Map<string, number>();
 
         vectorResults.forEach((result, index) => {
-            const rrfScore = 1 / (rrfK + index + 1);
+            if (result.distance !== null && result.distance !== undefined) {
+                vectorDistanceById.set(result.chunk_id, result.distance);
+            }
+            const rrfScore = (1 / (rrfK + index + 1)) * vectorWeight;
             combined.set(result.chunk_id, {
                 ...result,
+                match_type: 'semantic',
                 rrf_score: rrfScore
             });
         });
 
         ftsResults.forEach((result, index) => {
-            const rrfScore = 1 / (rrfK + index + 1);
+            const rrfScore = (1 / (rrfK + index + 1)) * ftsWeight;
             const existing = combined.get(result.chunk_id);
             if (existing) {
                 existing.rrf_score += rrfScore;
+                existing.match_type = 'hybrid';
+                if (existing.distance === null || existing.distance === undefined) {
+                    const vectorDistance = vectorDistanceById.get(result.chunk_id);
+                    if (vectorDistance !== undefined) {
+                        existing.distance = vectorDistance;
+                    }
+                }
                 return;
             }
 
             combined.set(result.chunk_id, {
                 ...result,
                 distance: null,
+                match_type: 'keyword',
                 rrf_score: rrfScore
             });
         });

@@ -89,6 +89,15 @@ export class DatabaseManager {
             `);
         }
 
+        const ftsRow = this.db.prepare(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='fts_chunks'"
+        ).get() as { sql?: string } | undefined;
+        const ftsSql = ftsRow?.sql ?? '';
+        const needsFtsRebuild = ftsSql.includes("content='vec_items'");
+        if (needsFtsRebuild) {
+            this.db.exec('DROP TABLE IF EXISTS fts_chunks');
+        }
+
         const ftsExists = this.db.prepare(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='fts_chunks'"
         ).get();
@@ -166,6 +175,17 @@ export class DatabaseManager {
         }
     }
 
+    private syncFtsEntry(chunk: DocumentChunk, headingHierarchyJson: string) {
+        this.ftsDeleteStmt.run(chunk.chunkId);
+        this.ftsInsertStmt.run(
+            chunk.content,
+            chunk.section,
+            headingHierarchyJson,
+            chunk.url,
+            chunk.chunkId
+        );
+    }
+
     getEmbeddingDimension(): number {
         return this.embeddingDimension;
     }
@@ -190,14 +210,7 @@ export class DatabaseManager {
                 BigInt(chunk.chunkIndex),
                 BigInt(chunk.totalChunks)
             );
-            this.ftsDeleteStmt.run(chunk.chunkId);
-            this.ftsInsertStmt.run(
-                chunk.content,
-                chunk.section,
-                headingHierarchyJson,
-                chunk.url,
-                chunk.chunkId
-            );
+            this.syncFtsEntry(chunk, headingHierarchyJson);
             this._totalChunksCount++;
         } catch (error: any) {
             // If insert fails due to UNIQUE constraint, update instead
@@ -213,14 +226,7 @@ export class DatabaseManager {
                     BigInt(chunk.totalChunks),
                     chunk.chunkId
                 );
-                this.ftsDeleteStmt.run(chunk.chunkId);
-                this.ftsInsertStmt.run(
-                    chunk.content,
-                    chunk.section,
-                    headingHierarchyJson,
-                    chunk.url,
-                    chunk.chunkId
-                );
+                this.syncFtsEntry(chunk, headingHierarchyJson);
                 // Update doesn't change count
             } else {
                 throw error;
@@ -234,7 +240,7 @@ export class DatabaseManager {
         const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM vec_items WHERE url = ?');
         const countRow = countStmt.get(url) as { count: number };
         const deletedCount = Number(countRow.count);
-        
+
         const stmt = this.db.prepare('DELETE FROM vec_items WHERE url = ?');
         stmt.run(url);
         this.db.prepare('DELETE FROM fts_chunks WHERE url = ?').run(url);
