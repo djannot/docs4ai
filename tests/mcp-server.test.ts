@@ -38,6 +38,8 @@ describe('McpServer', () => {
   let database: DatabaseManager;
   let fileA: string;
   let fileB: string;
+  let chunkAId: string;
+  let chunkBId: string;
 
   beforeAll(async () => {
     const root = createTempDir('mcp-server');
@@ -52,8 +54,14 @@ describe('McpServer', () => {
 
     const chunkA = processor.chunkContent(fs.readFileSync(fileA, 'utf-8'), fileA)[0];
     const chunkB = processor.chunkContent(fs.readFileSync(fileB, 'utf-8'), fileB)[0];
+    chunkAId = chunkA.chunkId;
+    chunkBId = chunkB.chunkId;
     database.insertChunk(chunkA, [1, 0, 0]);
     database.insertChunk(chunkB, [0, 1, 0]);
+    database.upsertChunkCoords([
+      { chunkId: chunkAId, x: 0.1, y: 0.2 },
+      { chunkId: chunkBId, x: -0.3, y: 0.4 }
+    ]);
 
     port = await findAvailablePort(4400);
     server = new McpServer(port);
@@ -85,6 +93,52 @@ describe('McpServer', () => {
     });
 
     expect(response.status).toBe(400);
+  });
+
+  it('returns visualization payload when requested', async () => {
+    currentEmbedding = [1, 0, 0];
+    const response = await fetch(`http://localhost:${port}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'alpha', limit: 5, includeVisualization: true })
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.visualization).toBeTruthy();
+    expect(payload.visualization.points.length).toBeGreaterThan(0);
+    const resultPoint = payload.visualization.points.find((point: any) => point.type === 'result');
+    expect(resultPoint).toBeTruthy();
+    expect(resultPoint).toHaveProperty('x');
+    expect(resultPoint).toHaveProperty('y');
+  });
+
+  it('returns map overview payload', async () => {
+    const response = await fetch(`http://localhost:${port}/map`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 10 })
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.visualization).toBeTruthy();
+    expect(payload.visualization.points.length).toBeGreaterThan(0);
+  });
+
+  it('returns neighbor visualization for chunk', async () => {
+    const response = await fetch(`http://localhost:${port}/neighbors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chunk_id: chunkAId, limit: 5 })
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.visualization).toBeTruthy();
+    const focusPoint = payload.visualization.points.find((point: any) => point.type === 'focus');
+    expect(focusPoint).toBeTruthy();
+    expect(focusPoint.id).toBe(chunkAId);
   });
 
   it('returns JSON-RPC errors for unknown methods', async () => {

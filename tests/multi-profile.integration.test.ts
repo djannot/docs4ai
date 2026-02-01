@@ -145,6 +145,7 @@ Key metrics to track:
   let profile1Embedding: EmbeddingService | null = null;
   let profile1McpServer: McpServer | null = null;
   let profile1Provider: EmbeddingProvider = 'local-minilm';
+  let profile1ChunkIds: string[] = [];
 
   let profile2Folder: string;
   let profile2DbPath: string;
@@ -329,6 +330,15 @@ Key metrics to track:
 
       expect(processedFiles.length).toBeGreaterThan(0);
       expect(profile1Database!.getTotalChunksCount()).toBeGreaterThan(0);
+
+      const embeddings = profile1Database!.getAllEmbeddings();
+      profile1ChunkIds = embeddings.map(item => item.chunkId);
+      const coords = profile1ChunkIds.map((chunkId, index) => ({
+        chunkId,
+        x: (index % 5) * 0.1,
+        y: Math.floor(index / 5) * 0.1
+      }));
+      profile1Database!.upsertChunkCoords(coords);
     }, 60000);
   });
 
@@ -506,6 +516,40 @@ Key metrics to track:
       const content = JSON.stringify(resultsArray).toLowerCase();
       expect(content.includes('ai') || content.includes('machine') || content.includes('learning') || content.includes('neural')).toBe(true);
     }, 60000); // Longer timeout for local model loading
+
+    it('should return map payloads after syncing data through the syncer', async () => {
+      const queryResponse = await fetch(`http://localhost:${profile1Port}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'installation', limit: 5, includeVisualization: true })
+      });
+      const queryPayload = await queryResponse.json();
+
+      expect(queryResponse.status).toBe(200);
+      expect(queryPayload.visualization).toBeTruthy();
+      const resultPoint = queryPayload.visualization.points.find((point: any) => point.type === 'result');
+      expect(resultPoint).toBeTruthy();
+
+      const mapResponse = await fetch(`http://localhost:${profile1Port}/map`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 20 })
+      });
+      const mapPayload = await mapResponse.json();
+      expect(mapResponse.status).toBe(200);
+      expect(mapPayload.visualization?.points?.length).toBeGreaterThan(0);
+
+      const neighborResponse = await fetch(`http://localhost:${profile1Port}/neighbors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chunk_id: resultPoint.id, limit: 5 })
+      });
+      const neighborPayload = await neighborResponse.json();
+      expect(neighborResponse.status).toBe(200);
+      const focusPoint = neighborPayload.visualization.points.find((point: any) => point.type === 'focus');
+      expect(focusPoint).toBeTruthy();
+      expect(focusPoint.id).toBe(resultPoint.id);
+    }, 60000);
 
     it('should query Profile 2 MCP server with OpenAI and get different results', async () => {
       if (!USE_REAL_API) {

@@ -52,7 +52,8 @@ Main integration test suite that:
 2. Syncs files to separate databases
 3. Starts MCP servers on different ports
 4. Verifies queries return profile-specific results
-5. Tests profile independence
+5. Verifies map endpoints after sync (`/query` with visualization, `/map`, `/neighbors`)
+6. Tests profile independence
 
 ### `syncer.test.ts`
 Folder watcher tests that cover:
@@ -80,6 +81,9 @@ Database safety checks:
 ### `mcp-server.test.ts`
 MCP server coverage for:
 - Query responses and metadata
+- Query visualization payloads for the Knowledge Map
+- Map overview responses
+- Neighbor exploration responses
 - JSON-RPC error handling
 - Missing database behavior
 
