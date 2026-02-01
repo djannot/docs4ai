@@ -17,6 +17,7 @@ A native desktop application that watches a folder and automatically syncs it wi
 - **Multiple profiles** - Manage multiple independent sync configurations
 - **Built-in MCP server** - Query your documents via HTTP or integrate with AI clients
 - **Knowledge Map** - 2D semantic map of results with neighborhood context
+- **Chat UI** - Ask questions in-app with document-grounded responses
 - **Cost tracking** - Monitor OpenAI token usage and costs in real-time
 - **Progress indicators** - Visual feedback for model downloads and file sync operations
 
@@ -188,6 +189,15 @@ Docs4ai includes a **Knowledge Map** view that projects all chunks into 2D and h
 - **Lines** connect adjacent chunks from the same document.
 - **Click a dot** to center the map and preview the corresponding chunk.
 - **Search** to see the contextual neighborhood around your top results.
+
+## Chat UI
+
+Docs4ai includes a built-in **Chat UI** for asking questions against your synced documents. It works with both **OpenAI** models and **local Qwen3** models:
+
+- **OpenAI**: uses your API key and model selection for high-quality responses.
+- **Local Qwen3**: runs entirely on your machine for private, offline-capable chat.
+
+Open the chat panel from the main UI and choose your provider in the chat settings.
 
 ## Hybrid Search
 
