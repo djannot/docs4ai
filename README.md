@@ -16,6 +16,7 @@ A native desktop application that watches a folder and automatically syncs it wi
 - **Multi-language UI** - Available in 9 languages with instant switching
 - **Multiple profiles** - Manage multiple independent sync configurations
 - **Built-in MCP server** - Query your documents via HTTP or integrate with AI clients
+- **Knowledge Map** - 2D semantic map of results with neighborhood context
 - **Cost tracking** - Monitor OpenAI token usage and costs in real-time
 - **Progress indicators** - Visual feedback for model downloads and file sync operations
 
@@ -166,7 +167,9 @@ The app includes a **built-in MCP server** that can be started directly from the
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
-| `/query` | POST | Query with `{ queryText, limit }` |
+| `/query` | POST | Query with `{ queryText, limit, includeVisualization }` |
+| `/map` | POST | Map overview payload for the UI |
+| `/neighbors` | POST | Neighbor map for a `{ chunk_id }` |
 | `/mcp` | POST | MCP-compatible endpoint |
 
 ### Example Query
@@ -174,8 +177,17 @@ The app includes a **built-in MCP server** that can be started directly from the
 ```bash
 curl -X POST http://localhost:3333/query \
   -H "Content-Type: application/json" \
-  -d '{"queryText": "How do I configure X?", "limit": 5}'
+  -d '{"queryText": "How do I configure X?", "limit": 5, "includeVisualization": true}'
 ```
+
+## Knowledge Map
+
+Docs4ai includes a **Knowledge Map** view that projects all chunks into 2D and highlights the top 5 search results with their semantic neighbors. Open it from the main UI card:
+
+- **Dots** represent document chunks (top results, neighbors, and a sampled global map).
+- **Lines** connect adjacent chunks from the same document.
+- **Click a dot** to center the map and preview the corresponding chunk.
+- **Search** to see the contextual neighborhood around your top results.
 
 ## Hybrid Search
 
