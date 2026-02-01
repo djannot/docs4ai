@@ -4,14 +4,15 @@ import Database from 'better-sqlite3';
 import { loadSqliteVec } from "./sqliteVec";
 import { randomUUID } from 'crypto';
 import { EmbeddingService, EmbeddingProvider } from './embeddings';
+import { MapService } from './map-service';
+import { createMapRouter } from './map-routes';
+import { createSearchRouter } from './search-routes';
 
 // Configuration constants
 const EMBEDDING_TIMEOUT_MS = 30000; // 30 second timeout for embedding generation
 const SESSION_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
 const SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Clean up every 5 minutes
 const MAX_SESSIONS = 1000; // Maximum number of concurrent sessions
-const MAP_SAMPLE_LIMIT = 600;
-const MAP_NEIGHBOR_LIMIT = 10;
 
 interface SessionData {
     createdAt: number;
@@ -38,26 +39,6 @@ interface ChunkResult {
     heading_hierarchy: string;
     chunk_index: number;
     total_chunks: number;
-}
-
-interface VisualizationPoint {
-    id: string;
-    x: number;
-    y: number;
-    score: number | null;
-    type: 'result' | 'neighbor' | 'map' | 'focus';
-    url: string;
-    section: string;
-    heading_hierarchy: string;
-    chunk_index: number;
-    total_chunks: number;
-    keywords: string[];
-}
-
-interface VisualizationPayload {
-    points: VisualizationPoint[];
-    center: { x: number; y: number };
-    focusId?: string;
 }
 
 interface JsonRpcRequest {
@@ -94,10 +75,12 @@ export class McpServer {
     private onCostUpdate: ((tokens: number, cost: number) => void) | null = null;
     private isStopping = false; // Prevent multiple concurrent stop calls
     private stopPromise: Promise<void> | null = null;
+    private mapService: MapService;
 
     constructor(port: number = 3333, embeddingContextLength?: number) {
         this.port = port;
         this.embeddingContextLength = embeddingContextLength ?? 8192;
+        this.mapService = new MapService();
         this.app = express();
         this.app.use(express.json());
         this.app.use((_req, res, next) => {
@@ -110,6 +93,19 @@ export class McpServer {
             }
             next();
         });
+        this.app.use(createMapRouter({
+            getDatabase: () => this.getDatabase(),
+            mapService: this.mapService,
+            hasDatabase: () => Boolean(this.dbPath)
+        }));
+        this.app.use(createSearchRouter({
+            getDatabase: () => this.getDatabase(),
+            mapService: this.mapService,
+            hasDatabase: () => Boolean(this.dbPath),
+            hasOpenAiKey: () => Boolean(this.openaiApiKey),
+            isOpenAiProvider: () => this.embeddingProvider === 'openai',
+            queryDatabase: (queryText: string, limit: number) => this.queryDatabase(queryText, limit)
+        }));
         this.setupRoutes();
         this.startSessionCleanup();
     }
@@ -126,7 +122,7 @@ export class McpServer {
             console.log('MCP Server: Creating new database connection');
             this.db = new Database(this.dbPath);
             loadSqliteVec(this.db);
-            this.ensureMapTables(this.db);
+            this.mapService.ensureMapTables(this.db);
         }
 
         return this.db;
@@ -239,279 +235,6 @@ export class McpServer {
         });
     }
 
-    private ensureMapTables(db: Database.Database): void {
-        const coordsRow = db.prepare(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='chunk_coords'"
-        ).get() as { sql?: string } | undefined;
-        const coordsSql = coordsRow?.sql ?? '';
-        if (coordsSql.includes('FOREIGN KEY') || coordsSql.includes('REFERENCES vec_items')) {
-            db.exec('DROP TABLE IF EXISTS chunk_coords');
-        }
-
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS chunk_coords (
-                chunk_id TEXT PRIMARY KEY,
-                x REAL,
-                y REAL
-            )
-        `);
-    }
-
-    private parseHeadingHierarchy(raw: string): string {
-        if (!raw) return '';
-        try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                return parsed.filter(Boolean).join(' > ');
-            }
-        } catch {
-            return raw;
-        }
-        return raw;
-    }
-
-    private extractKeywords(content: string, max: number = 3): string[] {
-        if (!content) return [];
-        const stopwords = new Set([
-            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'you', 'are',
-            'was', 'were', 'have', 'has', 'had', 'not', 'but', 'can', 'will', 'all', 'any',
-            'its', 'our', 'they', 'their', 'them', 'using', 'use', 'used', 'over', 'more',
-            'also', 'such', 'than', 'then', 'when', 'what', 'where', 'which', 'who', 'how'
-        ]);
-        const tokens = (content.toLowerCase().match(/[a-z0-9]{3,}/g) || [])
-            .filter(token => !stopwords.has(token));
-        const counts = new Map<string, number>();
-        for (const token of tokens) {
-            counts.set(token, (counts.get(token) || 0) + 1);
-        }
-        return Array.from(counts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, max)
-            .map(([token]) => token);
-    }
-
-    private normalizeEmbedding(embedding: Float32Array | Buffer | number[] | null | undefined): Float32Array | null {
-        if (!embedding) return null;
-        if (embedding instanceof Float32Array) return embedding;
-        if (Array.isArray(embedding)) return new Float32Array(embedding);
-        if (Buffer.isBuffer(embedding)) {
-            return new Float32Array(embedding.buffer, embedding.byteOffset, Math.floor(embedding.byteLength / 4));
-        }
-        return null;
-    }
-
-    private fetchChunkRows(db: Database.Database, ids: string[]): Map<string, {
-        chunk_id: string;
-        x: number | null;
-        y: number | null;
-        url: string;
-        section: string;
-        heading_hierarchy: string;
-        chunk_index: number;
-        total_chunks: number;
-        content: string;
-    }> {
-        const map = new Map<string, any>();
-        if (ids.length === 0) return map;
-        const placeholders = ids.map(() => '?').join(',');
-        const rows = db.prepare(`
-            SELECT
-                vec_items.chunk_id,
-                vec_items.url,
-                vec_items.section,
-                vec_items.heading_hierarchy,
-                vec_items.chunk_index,
-                vec_items.total_chunks,
-                vec_items.content,
-                chunk_coords.x,
-                chunk_coords.y
-            FROM vec_items
-            LEFT JOIN chunk_coords ON chunk_coords.chunk_id = vec_items.chunk_id
-            WHERE vec_items.chunk_id IN (${placeholders})
-        `).all(...ids) as Array<any>;
-
-        rows.forEach(row => {
-            map.set(row.chunk_id, row);
-        });
-
-        return map;
-    }
-
-    private buildVisualizationFromIds(
-        rows: Map<string, any>,
-        ids: string[],
-        type: VisualizationPoint['type'],
-        scoreMap?: Map<string, number | null>
-    ): VisualizationPoint[] {
-        const points: VisualizationPoint[] = [];
-        for (const id of ids) {
-            const row = rows.get(id);
-            if (!row) continue;
-            points.push(this.makeVisualizationPoint(row, type, scoreMap?.get(id) ?? null));
-        }
-        return points;
-    }
-
-    private makeVisualizationPoint(
-        row: {
-            chunk_id: string;
-            x: number | null;
-            y: number | null;
-            url: string;
-            section: string;
-            heading_hierarchy: string;
-            chunk_index: number;
-            total_chunks: number;
-            content: string;
-        },
-        type: VisualizationPoint['type'],
-        score: number | null
-    ): VisualizationPoint {
-        return {
-            id: row.chunk_id,
-            x: row.x ?? 0,
-            y: row.y ?? 0,
-            score,
-            type,
-            url: row.url,
-            section: row.section,
-            heading_hierarchy: this.parseHeadingHierarchy(row.heading_hierarchy),
-            chunk_index: Number(row.chunk_index),
-            total_chunks: Number(row.total_chunks),
-            keywords: this.extractKeywords(row.content)
-        };
-    }
-
-    private buildVisualizationForQuery(
-        db: Database.Database,
-        results: QueryResult[],
-        sampleLimit: number = MAP_SAMPLE_LIMIT
-    ): VisualizationPayload {
-        const topResults = results.slice(0, 5);
-        const resultIds = topResults.map(result => result.chunk_id);
-        const resultScores = new Map<string, number>();
-        topResults.forEach(result => resultScores.set(result.chunk_id, result.rrf_score));
-
-        const neighborScores = new Map<string, number>();
-        const neighborIds: string[] = [];
-
-        const embeddingStmt = db.prepare('SELECT embedding FROM vec_items WHERE chunk_id = ?');
-        const neighborStmt = db.prepare(`
-            SELECT chunk_id, distance
-            FROM vec_items
-            WHERE embedding MATCH ? AND k = ?
-            ORDER BY distance
-        `);
-
-        for (const result of topResults) {
-            const row = embeddingStmt.get(result.chunk_id) as { embedding?: Float32Array | Buffer } | undefined;
-            const embedding = this.normalizeEmbedding(row?.embedding);
-            if (!embedding) continue;
-            const neighbors = neighborStmt.all(embedding, MAP_NEIGHBOR_LIMIT + 1) as Array<{ chunk_id: string; distance: number }>;
-            for (const neighbor of neighbors) {
-                if (neighbor.chunk_id === result.chunk_id) continue;
-                if (!neighborScores.has(neighbor.chunk_id)) {
-                    neighborIds.push(neighbor.chunk_id);
-                }
-                neighborScores.set(neighbor.chunk_id, 1 / (1 + (neighbor.distance ?? 0)));
-            }
-        }
-
-        const uniqueNeighborIds = Array.from(new Set(neighborIds));
-        const rows = this.fetchChunkRows(db, [...resultIds, ...uniqueNeighborIds]);
-        const points: VisualizationPoint[] = [
-            ...this.buildVisualizationFromIds(rows, resultIds, 'result', resultScores),
-            ...this.buildVisualizationFromIds(rows, uniqueNeighborIds, 'neighbor', neighborScores)
-        ];
-
-        const excludeIds = new Set(points.map(point => point.id));
-        const sampleRows = db.prepare(`
-            SELECT
-                vec_items.chunk_id,
-                vec_items.url,
-                vec_items.section,
-                vec_items.heading_hierarchy,
-                vec_items.chunk_index,
-                vec_items.total_chunks,
-                vec_items.content,
-                chunk_coords.x,
-                chunk_coords.y
-            FROM chunk_coords
-            JOIN vec_items ON vec_items.chunk_id = chunk_coords.chunk_id
-            ORDER BY RANDOM()
-            LIMIT ?
-        `).all(sampleLimit) as Array<any>;
-
-        for (const row of sampleRows) {
-            if (excludeIds.has(row.chunk_id)) continue;
-            points.push(this.makeVisualizationPoint(row, 'map', null));
-        }
-
-        const centerPoint = points.find(point => point.type === 'result') || points[0];
-        const center = centerPoint ? { x: centerPoint.x, y: centerPoint.y } : { x: 0, y: 0 };
-
-        return { points, center };
-    }
-
-    private buildMapOverview(db: Database.Database, sampleLimit: number = MAP_SAMPLE_LIMIT): VisualizationPayload {
-        const sampleRows = db.prepare(`
-            SELECT
-                vec_items.chunk_id,
-                vec_items.url,
-                vec_items.section,
-                vec_items.heading_hierarchy,
-                vec_items.chunk_index,
-                vec_items.total_chunks,
-                vec_items.content,
-                chunk_coords.x,
-                chunk_coords.y
-            FROM chunk_coords
-            JOIN vec_items ON vec_items.chunk_id = chunk_coords.chunk_id
-            ORDER BY RANDOM()
-            LIMIT ?
-        `).all(sampleLimit) as Array<any>;
-
-        const points = sampleRows.map(row => this.makeVisualizationPoint(row, 'map', null));
-        const centerPoint = points[0];
-        const center = centerPoint ? { x: centerPoint.x, y: centerPoint.y } : { x: 0, y: 0 };
-        return { points, center };
-    }
-
-    private buildNeighborVisualization(db: Database.Database, chunkId: string, limit: number = MAP_NEIGHBOR_LIMIT): VisualizationPayload | null {
-        const baseRows = this.fetchChunkRows(db, [chunkId]);
-        const baseRow = baseRows.get(chunkId);
-        if (!baseRow) return null;
-
-        const embeddingRow = db.prepare('SELECT embedding FROM vec_items WHERE chunk_id = ?').get(chunkId) as {
-            embedding?: Float32Array | Buffer;
-        } | undefined;
-        const embedding = this.normalizeEmbedding(embeddingRow?.embedding);
-        if (!embedding) return null;
-
-        const neighborRows = db.prepare(`
-            SELECT chunk_id, distance
-            FROM vec_items
-            WHERE embedding MATCH ? AND k = ?
-            ORDER BY distance
-        `).all(embedding, limit + 1) as Array<{ chunk_id: string; distance: number }>;
-
-        const neighborScores = new Map<string, number>();
-        const neighborIds: string[] = [];
-        for (const neighbor of neighborRows) {
-            if (neighbor.chunk_id === chunkId) continue;
-            neighborIds.push(neighbor.chunk_id);
-            neighborScores.set(neighbor.chunk_id, 1 / (1 + (neighbor.distance ?? 0)));
-        }
-
-        const rows = this.fetchChunkRows(db, [chunkId, ...neighborIds]);
-        const points: VisualizationPoint[] = [
-            ...this.buildVisualizationFromIds(rows, [chunkId], 'focus', new Map([[chunkId, 1]])),
-            ...this.buildVisualizationFromIds(rows, neighborIds, 'neighbor', neighborScores)
-        ];
-
-        const center = { x: baseRow.x ?? 0, y: baseRow.y ?? 0 };
-        return { points, center, focusId: chunkId };
-    }
 
     private async getEmbeddingService(): Promise<EmbeddingService> {
         if (this.embeddingService) {
@@ -564,87 +287,9 @@ export class McpServer {
             });
         });
 
-        // Query endpoint
-        this.app.post('/query', async (req: Request, res: Response) => {
-            try {
-                const { query, queryText, limit = 5, includeVisualization = false } = req.body;
-                const searchQuery = query || queryText; // Support both parameter names
+        // Query endpoint is registered in createSearchRouter
 
-                if (!searchQuery) {
-                    res.status(400).json({ error: 'query is required' });
-                    return;
-                }
-
-                if (!this.dbPath) {
-                    res.status(503).json({ error: 'Database not configured. Please select a database in the app.' });
-                    return;
-                }
-
-                // Check if we need API key (only for OpenAI)
-                if (this.embeddingProvider === 'openai' && !this.openaiApiKey) {
-                    res.status(503).json({ error: 'OpenAI API key not configured. Please add your API key in the app or switch to local embeddings.' });
-                    return;
-                }
-
-                const results = await this.queryDatabase(searchQuery, Math.min(limit, 20));
-                const responsePayload: any = {
-                    query: searchQuery,
-                    count: results.length,
-                    results
-                };
-                if (includeVisualization && results.length > 0) {
-                    const db = this.getDatabase();
-                    responsePayload.visualization = this.buildVisualizationForQuery(db, results);
-                }
-                res.json(responsePayload);
-            } catch (error: any) {
-                console.error('Query error:', error);
-                res.status(500).json({ error: error.message });
-            }
-        });
-
-        // Map overview endpoint
-        this.app.post('/map', (_req: Request, res: Response) => {
-            try {
-                if (!this.dbPath) {
-                    res.status(503).json({ error: 'Database not configured. Please select a database in the app.' });
-                    return;
-                }
-                const db = this.getDatabase();
-                const limit = Math.min(Number(_req.body?.limit ?? MAP_SAMPLE_LIMIT), 2000);
-                const visualization = this.buildMapOverview(db, limit);
-                res.json({ visualization });
-            } catch (error: any) {
-                console.error('Map overview error:', error);
-                res.status(500).json({ error: error.message });
-            }
-        });
-
-        // Neighbor exploration endpoint
-        this.app.post('/neighbors', (req: Request, res: Response) => {
-            try {
-                if (!this.dbPath) {
-                    res.status(503).json({ error: 'Database not configured. Please select a database in the app.' });
-                    return;
-                }
-                const chunkId = req.body?.chunk_id as string;
-                if (!chunkId) {
-                    res.status(400).json({ error: 'chunk_id is required' });
-                    return;
-                }
-                const limit = Math.min(Number(req.body?.limit ?? MAP_NEIGHBOR_LIMIT), 50);
-                const db = this.getDatabase();
-                const visualization = this.buildNeighborVisualization(db, chunkId, limit);
-                if (!visualization) {
-                    res.status(404).json({ error: 'Chunk not found' });
-                    return;
-                }
-                res.json({ visualization });
-            } catch (error: any) {
-                console.error('Neighbor query error:', error);
-                res.status(500).json({ error: error.message });
-            }
-        });
+        // Map overview + neighbor routes are registered in createMapRouter
 
         // MCP Streamable HTTP endpoint - proper JSON-RPC handling
         this.app.post('/mcp', async (req: Request, res: Response) => {

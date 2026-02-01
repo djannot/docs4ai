@@ -8,6 +8,7 @@ Keep edits consistent with existing patterns in the codebase.
 - Main process TypeScript lives in `src/` and renderer in `src/index.html`.
 - Tests live in `tests/` and run with Jest + ts-jest.
 - Build output is `dist/`; packaged apps go to `release/`.
+- HTTP routes live in `src/mcp-server.ts` with UI-specific routes split into `src/map-routes.ts` and `src/search-routes.ts`.
 
 ## Setup Requirements
 - Node.js 18+ and npm.
