@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } from 'el
 import type { IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import Store from 'electron-store';
+import { Worker } from 'worker_threads';
 import { FolderSyncer } from './syncer';
 import { DatabaseManager } from './database';
 import { ContentProcessor } from './processor';
@@ -60,6 +61,10 @@ interface ProfileState {
     totalCost: number;
     totalFilesToSync: number;  // Total files matching extensions
     filesProcessed: number;     // Files processed during current sync
+    mapProjectionRunning: boolean;
+    mapProjectionPending: boolean;
+    mapProjectionTimer: NodeJS.Timeout | null;
+    isInitialSyncing: boolean;
 }
 
 // Store for persistent settings
@@ -609,7 +614,11 @@ function setupIpcHandlers() {
                 totalTokens: persistedCosts?.totalTokens || 0,
                 totalCost: persistedCosts?.totalCost || 0,
                 totalFilesToSync: 0,
-                filesProcessed: 0
+                filesProcessed: 0,
+                mapProjectionRunning: false,
+                mapProjectionPending: false,
+                mapProjectionTimer: null,
+                isInitialSyncing: false
             };
             profileStates.set(profileId, state);
         }
@@ -1063,7 +1072,11 @@ function setupIpcHandlers() {
                     totalTokens: persistedCosts?.totalTokens || 0,
                     totalCost: persistedCosts?.totalCost || 0,
                     totalFilesToSync: 0,
-                    filesProcessed: 0
+                    filesProcessed: 0,
+                    mapProjectionRunning: false,
+                    mapProjectionPending: false,
+                    mapProjectionTimer: null,
+                    isInitialSyncing: false
                 };
                 profileStates.set(profileId, state);
             }
@@ -1370,7 +1383,11 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 totalTokens: persistedCosts?.totalTokens || 0,
                 totalCost: persistedCosts?.totalCost || 0,
                 totalFilesToSync: 0,
-                filesProcessed: 0
+                filesProcessed: 0,
+                mapProjectionRunning: false,
+                mapProjectionPending: false,
+                mapProjectionTimer: null,
+                isInitialSyncing: false
             };
             profileStates.set(profileId, state);
         }
@@ -1386,6 +1403,11 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
 
         // Initialize processor
         state.processor = new ContentProcessor();
+
+        if (state.database.getTotalChunksCount() > 0 && state.database.getChunkCoordsCount() === 0) {
+            state.mapProjectionPending = true;
+            scheduleMapProjection(profileId, 2000);
+        }
 
         // Terminate existing embedding service if any (cleanup from previous run)
         if (state.embeddingService) {
@@ -1480,6 +1502,10 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             onFileDelete: async (filePath) => {
                 state.database?.removeChunksForFile(filePath);
                 state.database?.removeFileInfo(filePath);
+                state.mapProjectionPending = true;
+                if (!state.isInitialSyncing) {
+                    scheduleMapProjection(profileId);
+                }
                 sendStats(profileId);
             }
         });
@@ -1512,6 +1538,112 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
     } catch (error: any) {
         console.error(`[${profile.name}] Error starting syncer:`, error);
         return { success: false, error: error.message };
+    }
+}
+
+function normalizeEmbedding(embedding: Float32Array | Buffer | number[]): Float32Array | null {
+    if (!embedding) return null;
+    if (embedding instanceof Float32Array) return embedding;
+    if (Array.isArray(embedding)) return new Float32Array(embedding);
+    if (Buffer.isBuffer(embedding)) {
+        return new Float32Array(embedding.buffer, embedding.byteOffset, Math.floor(embedding.byteLength / 4));
+    }
+    return null;
+}
+
+function scheduleMapProjection(profileId: string, delayMs: number = 15000) {
+    const state = profileStates.get(profileId);
+    if (!state) return;
+    state.mapProjectionPending = true;
+    if (state.mapProjectionTimer) {
+        clearTimeout(state.mapProjectionTimer);
+    }
+    state.mapProjectionTimer = setTimeout(() => {
+        runMapProjection(profileId, 'debounced');
+    }, delayMs);
+}
+
+async function runMapProjection(profileId: string, reason: string) {
+    const state = profileStates.get(profileId);
+    if (!state || !state.database) return;
+    if (state.mapProjectionRunning) {
+        state.mapProjectionPending = true;
+        return;
+    }
+
+    if (state.mapProjectionTimer) {
+        clearTimeout(state.mapProjectionTimer);
+        state.mapProjectionTimer = null;
+    }
+
+    state.mapProjectionRunning = true;
+    state.mapProjectionPending = false;
+
+    try {
+        const embeddings = state.database.getAllEmbeddings();
+        if (embeddings.length === 0) {
+            state.database.clearChunkCoords();
+            return;
+        }
+
+        const vectors: number[][] = [];
+        const chunkIds: string[] = [];
+        for (const row of embeddings) {
+            const vector = normalizeEmbedding(row.embedding);
+            if (!vector) continue;
+            vectors.push(Array.from(vector));
+            chunkIds.push(row.chunkId);
+        }
+
+        if (vectors.length === 0) {
+            state.database.clearChunkCoords();
+            return;
+        }
+
+        console.log(`[${profileId}] Projecting ${vectors.length} embeddings (${reason})`);
+
+        const workerPath = path.join(__dirname, 'umap-worker.js');
+        const coords = await new Promise<Array<{ x: number; y: number }>>((resolve, reject) => {
+            const worker = new Worker(workerPath);
+            const cleanup = () => {
+                worker.removeAllListeners();
+                worker.terminate();
+            };
+            worker.on('message', (message: { coords?: Array<{ x: number; y: number }>; error?: string }) => {
+                if (message.error) {
+                    cleanup();
+                    reject(new Error(message.error));
+                    return;
+                }
+                cleanup();
+                resolve(message.coords || []);
+            });
+            worker.on('error', (error) => {
+                cleanup();
+                reject(error);
+            });
+            worker.postMessage({ embeddings: vectors });
+        });
+
+        if (coords.length !== chunkIds.length) {
+            console.warn(`[${profileId}] UMAP returned ${coords.length} points for ${chunkIds.length} embeddings`);
+        }
+
+        const projected = coords.map((point, index) => ({
+            chunkId: chunkIds[index],
+            x: point.x,
+            y: point.y
+        })).filter(item => item.chunkId !== undefined);
+
+        state.database.upsertChunkCoords(projected);
+    } catch (error: any) {
+        console.error(`[${profileId}] Map projection failed:`, error);
+    } finally {
+        state.mapProjectionRunning = false;
+        if (state.mapProjectionPending) {
+            state.mapProjectionPending = false;
+            scheduleMapProjection(profileId, 5000);
+        }
     }
 }
 
@@ -1638,6 +1770,11 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
         // Update file info with current timestamp
         state.database.upsertFileInfo(filePath, hash, new Date(), chunks.length);
 
+        state.mapProjectionPending = true;
+        if (!state.isInitialSyncing) {
+            scheduleMapProjection(profileId);
+        }
+
         console.log(`[${profileId}] Processed: ${filePath} (${chunks.length} chunks)`);
     } catch (error) {
         console.error(`[${profileId}] Error processing ${filePath}:`, error);
@@ -1650,6 +1787,8 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
 async function performInitialSync(profileId: string, forceReprocess: boolean = false) {
     const state = profileStates.get(profileId);
     if (!state || !state.syncer || !state.database) return;
+
+    state.isInitialSyncing = true;
 
     const appSettings = store.store;
     const profile = appSettings.profiles?.find(p => p.id === profileId);
@@ -1727,6 +1866,11 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
         state.totalFilesToSync = 0;
         state.filesProcessed = 0;
         sendStats(profileId);
+    }
+
+    state.isInitialSyncing = false;
+    if (!syncCancelled.get(profileId) && state.mapProjectionPending) {
+        await runMapProjection(profileId, 'initial-sync');
     }
 }
 
@@ -1920,7 +2064,11 @@ app.whenReady().then(async () => {
                     totalTokens: persistedCosts?.totalTokens || 0,
                     totalCost: persistedCosts?.totalCost || 0,
                     totalFilesToSync: 0,
-                    filesProcessed: 0
+                    filesProcessed: 0,
+                    mapProjectionRunning: false,
+                    mapProjectionPending: false,
+                    mapProjectionTimer: null,
+                    isInitialSyncing: false
                 });
             }
         }

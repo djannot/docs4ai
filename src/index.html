@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*">
     <title>Docs4ai</title>
     <style>
         * {
@@ -872,6 +872,162 @@
         .profile-content.active {
             display: block;
         }
+
+        .map-modal-body {
+            padding: 12px 16px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .map-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .map-info {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .map-info-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: #0a84ff;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s ease, color 0.15s ease;
+        }
+
+        .map-info-icon {
+            font-size: 16px;
+            font-weight: 600;
+            font-style: italic;
+            font-family: 'Georgia', 'Times New Roman', serif;
+            line-height: 1;
+            display: block;
+        }
+
+        .map-info-btn:hover {
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 6px 14px rgba(15, 22, 36, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .map-info-panel {
+            position: absolute;
+            top: 36px;
+            right: 0;
+            width: 220px;
+            background: #ffffff;
+            border: 1px solid #dfe3ea;
+            border-radius: 10px;
+            box-shadow: 0 12px 24px rgba(15, 22, 36, 0.15);
+            padding: 12px;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #1d1d1f;
+            z-index: 10;
+            display: none;
+        }
+
+        .map-info-panel strong {
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .map-info-panel.active {
+            display: block;
+        }
+
+        .map-controls input[type="text"] {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fafafa;
+        }
+
+        .map-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex: 1;
+            height: 100%;
+            min-height: 0;
+        }
+
+        .map-preview {
+            background: #f5f5f7;
+            border: 1px solid #e5e5ea;
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+            min-height: 180px;
+            max-height: 240px;
+            flex: 0 0 auto;
+        }
+
+        .map-preview h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #6e6e73;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .map-preview-meta {
+            font-size: 12px;
+            color: #6e6e73;
+        }
+
+        .map-preview-content {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e5e5ea;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            min-height: 120px;
+        }
+
+        .map-graph-wrap {
+            position: relative;
+            background: #0f1624;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid #1f2a44;
+            min-height: 320px;
+            flex: 1;
+        }
+
+        #mapGraph {
+            width: 100%;
+            height: 100%;
+            min-height: 320px;
+        }
+
+        .map-status {
+            font-size: 12px;
+            color: #6e6e73;
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
@@ -908,7 +1064,7 @@
 
         <!-- MCP Server Card (shared across profiles) -->
         <div class="card" style="margin-top: 16px;">
-            <div class="card-title">🌐 MCP Server</div>
+            <div class="card-title">🌐 <span data-i18n="mcp.title">MCP Server</span></div>
 
             <div class="input-group">
                 <div class="input-row">
@@ -923,6 +1079,19 @@
             </div>
 
             <button class="btn-secondary" id="mcpConfigureBtn" style="display: none; width: 100%; margin-top: 8px;" onclick="openMcpConfig()">Configure Clients</button>
+        </div>
+
+        <!-- Knowledge Map Card -->
+        <div class="card" style="margin-top: 16px;">
+            <div class="card-title">🗺️ <span data-i18n="map.title">Knowledge Map</span></div>
+            <div class="input-group">
+                <label for="mapQuickQuery" data-i18n="map.quickSearchLabel">Quick search:</label>
+                <div class="input-row">
+                    <input type="text" id="mapQuickQuery" data-i18n-placeholder="map.quickSearchPlaceholder" placeholder="Search for a topic...">
+                    <button class="btn-secondary" onclick="openMapModal()" data-i18n="map.openButton">Open Map</button>
+                </div>
+                <div class="info" data-i18n="map.quickSearchInfo">Visualize the semantic neighborhood around your top results.</div>
+            </div>
         </div>
 
         <!-- Chat with LLM Card -->
@@ -1077,6 +1246,43 @@
                             <span class="mcp-label">Protocol:</span>
                             <code>MCP 2024-11-05</code>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Knowledge Map Modal -->
+    <div class="modal-overlay" id="mapModal">
+        <div class="modal" style="max-width: 1100px; height: 85vh;">
+            <div class="modal-header">
+                <h2>🗺️ <span data-i18n="map.title">Knowledge Map</span></h2>
+                <button class="modal-close" onclick="closeMapModal()">&times;</button>
+            </div>
+            <div class="modal-body map-modal-body">
+                <div class="map-controls">
+                    <input type="text" id="mapSearchInput" data-i18n-placeholder="map.searchPlaceholder" placeholder="Search your knowledge base...">
+                    <button class="btn-primary" id="mapSearchBtn" onclick="runMapSearch()" data-i18n="map.searchButton">Search</button>
+                    <button class="btn-secondary" onclick="resetMapView()" data-i18n="map.resetButton">Reset</button>
+                    <span class="map-status" id="mapStatus" data-i18n="map.statusIdle">Idle · showing overview</span>
+                    <div class="map-info">
+                        <button class="map-info-btn" type="button" onclick="toggleMapInfo(event)" aria-label="Map info">
+                            <span class="map-info-icon" aria-hidden="true">i</span>
+                        </button>
+                        <div class="map-info-panel" id="mapInfoPanel">
+                            <strong data-i18n="map.infoTitle">How to read this map</strong>
+                            <div data-i18n="map.infoBody" style="white-space: pre-line;">Dots represent document chunks.\nBright dots are your top 5 results.\nNearby dots are semantic neighbors.\nFaint dots are the broader map.\nLines connect adjacent chunks from the same document.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="map-layout">
+                    <div class="map-graph-wrap">
+                        <div id="mapGraph"></div>
+                    </div>
+                    <div class="map-preview">
+                        <h3 data-i18n="map.previewTitle">Document Preview</h3>
+                        <div class="map-preview-meta" id="mapPreviewMeta" data-i18n="map.previewHint">Select a node to preview its chunk.</div>
+                        <div class="map-preview-content" id="mapPreviewContent"></div>
                     </div>
                 </div>
             </div>
@@ -1526,6 +1732,7 @@
         }
     </style>
 
+    <script src="../node_modules/force-graph/dist/force-graph.min.js"></script>
     <script>
         let profiles = [];
         let activeProfileId = null;
@@ -1533,6 +1740,11 @@
         let mcpRunning = false;
         let saveSettingsTimers = new Map(); // Debounce timers for profile settings
         const chunkContentCache = new Map();
+        let mapGraph = null;
+        let mapMcpPort = null;
+        let mapZoomLevel = 1;
+        let mapFocusId = null;
+        let mapFocusDocUrl = null;
 
         // Load profiles on startup
         async function loadProfiles() {
@@ -2856,6 +3068,44 @@
             }
         }
 
+        function setupMapListeners() {
+            const mapSearchInput = document.getElementById('mapSearchInput');
+            if (mapSearchInput) {
+                mapSearchInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        runMapSearch();
+                    }
+                });
+            }
+
+            const quickInput = document.getElementById('mapQuickQuery');
+            if (quickInput) {
+                quickInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        openMapModal();
+                    }
+                });
+            }
+
+            document.addEventListener('click', (event) => {
+                const panel = document.getElementById('mapInfoPanel');
+                if (!panel || !panel.classList.contains('active')) return;
+                const infoWrap = event.target.closest('.map-info');
+                if (!infoWrap) {
+                    panel.classList.remove('active');
+                }
+            });
+        }
+
+        function toggleMapInfo(event) {
+            event.stopPropagation();
+            const panel = document.getElementById('mapInfoPanel');
+            if (!panel) return;
+            panel.classList.toggle('active');
+        }
+
         // Sync LLM chat settings from active profile
         function syncLlmChatSettingsFromProfile() {
             if (!activeProfileId) return;
@@ -2885,6 +3135,441 @@
             const llmContextLengthInput = document.getElementById('llmContextLength-chat');
             if (llmContextLengthInput) {
                 llmContextLengthInput.value = profile.llmContextLength || 8192;
+            }
+        }
+
+        async function openMapModal() {
+            if (!activeProfileId) {
+                alert(t('ui.noActiveProfile'));
+                return;
+            }
+
+            const profile = profiles.find(p => p.id === activeProfileId);
+            if (!profile?.databasePath) {
+                alert(t('ui.noDatabaseSelected'));
+                return;
+            }
+
+            document.getElementById('mapModal').classList.add('active');
+            mapFocusId = null;
+            mapFocusDocUrl = null;
+            const quickQuery = document.getElementById('mapQuickQuery')?.value?.trim() || '';
+            const mapSearchInput = document.getElementById('mapSearchInput');
+            if (mapSearchInput) {
+                mapSearchInput.value = quickQuery;
+            }
+
+            const ready = await ensureMapServer();
+            if (!ready) return;
+
+            if (quickQuery) {
+                await runMapSearch();
+            } else {
+                await loadMapOverview();
+            }
+        }
+
+        function closeMapModal() {
+            document.getElementById('mapModal').classList.remove('active');
+        }
+
+        async function ensureMapServer() {
+            if (!activeProfileId) return false;
+            const status = await window.api.getMcpStatus(activeProfileId);
+            if (status?.running) {
+                mapMcpPort = status.port;
+                return true;
+            }
+
+            const result = await window.api.startMcpServer(activeProfileId);
+            if (!result?.success) {
+                alert(result?.error || t('map.serverError'));
+                return false;
+            }
+            mapMcpPort = result.port;
+            return true;
+        }
+
+        function setMapStatus(textKey, params = {}) {
+            const statusEl = document.getElementById('mapStatus');
+            if (!statusEl) return;
+            statusEl.textContent = t(textKey, params);
+        }
+
+        async function loadMapOverview() {
+            if (!mapMcpPort) return;
+            setMapStatus('map.statusIdle');
+            const previewMeta = document.getElementById('mapPreviewMeta');
+            const previewContent = document.getElementById('mapPreviewContent');
+            if (previewMeta) {
+                previewMeta.textContent = t('map.previewHint');
+            }
+            if (previewContent) {
+                previewContent.textContent = '';
+            }
+            try {
+                const response = await fetch(`http://localhost:${mapMcpPort}/map`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ limit: 700 })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    setMapStatus('map.statusError');
+                    return;
+                }
+                if (data.error) {
+                    setMapStatus('map.statusError');
+                    return;
+                }
+                if (data.visualization) {
+                    if (!data.visualization.points || data.visualization.points.length === 0) {
+                        setMapStatus('map.statusNoCoords');
+                        return;
+                    }
+                    renderMapVisualization(data.visualization, { mergeMap: false });
+                    return;
+                }
+                setMapStatus('map.statusNoCoords');
+            } catch (error) {
+                setMapStatus('map.statusError');
+            }
+        }
+
+        async function runMapSearch() {
+            if (!mapMcpPort) return;
+            const input = document.getElementById('mapSearchInput');
+            const query = input?.value?.trim() || '';
+            if (!query) {
+                await loadMapOverview();
+                return;
+            }
+
+            setMapStatus('map.statusSearching');
+            try {
+                const response = await fetch(`http://localhost:${mapMcpPort}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, limit: 5, includeVisualization: true })
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    setMapStatus('map.statusError');
+                    return;
+                }
+                if (data.visualization && data.visualization.points?.length) {
+                    renderMapVisualization(data.visualization, { mergeMap: true });
+                    setMapStatus('map.statusResults', { count: data.count || 0 });
+                    const topResult = data.visualization.points.find(point => point.type === 'result');
+                    if (topResult?.id) {
+                        mapFocusId = topResult.id;
+                        centerOnNode(topResult.id, { animate: false, zoom: false });
+                    }
+                    return;
+                }
+                setMapStatus('map.statusEmpty');
+            } catch (error) {
+                setMapStatus('map.statusError');
+            }
+        }
+
+        async function resetMapView() {
+            const input = document.getElementById('mapSearchInput');
+            if (input) input.value = '';
+            mapFocusId = null;
+            mapFocusDocUrl = null;
+            await loadMapOverview();
+        }
+
+        function buildMapLinks(nodes) {
+            const links = [];
+            const byUrl = new Map();
+            nodes.forEach(node => {
+                if (!node.url) return;
+                if (!byUrl.has(node.url)) {
+                    byUrl.set(node.url, []);
+                }
+                byUrl.get(node.url).push(node);
+            });
+            for (const group of byUrl.values()) {
+                group.sort((a, b) => a.chunk_index - b.chunk_index);
+                for (let i = 0; i < group.length - 1; i++) {
+                    links.push({ source: group[i].id, target: group[i + 1].id, url: group[i].url });
+                    if (links.length > 900) break;
+                }
+            }
+            return links;
+        }
+
+        function colorForScore(score) {
+            if (score === null || score === undefined) return '#98a2b3';
+            const clamped = Math.min(1, Math.max(0, score));
+            const start = { r: 58, g: 123, b: 213 };
+            const end = { r: 255, g: 179, b: 71 };
+            const r = Math.round(start.r + (end.r - start.r) * clamped);
+            const g = Math.round(start.g + (end.g - start.g) * clamped);
+            const b = Math.round(start.b + (end.b - start.b) * clamped);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function renderMapVisualization(visualization, { mergeMap, autoFit = true } = { mergeMap: false, autoFit: true }) {
+            if (!visualization || !visualization.points) return;
+            const baseNodes = (mergeMap && mapGraph?.graphData()?.nodes) ? mapGraph.graphData().nodes : [];
+            const mapNodes = mergeMap ? baseNodes.filter(node => node.type === 'map') : [];
+            const incomingNodes = visualization.points.map(point => ({
+                ...point,
+                x: point.x * 320,
+                y: point.y * 320,
+                fx: point.x * 320,
+                fy: point.y * 320
+            }));
+
+            const resultScores = incomingNodes
+                .filter(node => node.type === 'result' && node.score !== null && node.score !== undefined)
+                .map(node => node.score);
+            const maxResultScore = resultScores.length ? Math.max(...resultScores) : 1;
+            incomingNodes.forEach(node => {
+                if (node.type === 'result' && node.score !== null && node.score !== undefined) {
+                    node.scoreNormalized = node.score / maxResultScore;
+                }
+            });
+
+            const merged = new Map();
+            const typePriority = (type) => {
+                if (type === 'focus') return 3;
+                if (type === 'result') return 2;
+                if (type === 'neighbor') return 1;
+                return 0;
+            };
+            mapNodes.forEach(node => merged.set(node.id, node));
+            incomingNodes.forEach(node => {
+                const existing = merged.get(node.id);
+                if (!existing || typePriority(node.type) >= typePriority(existing.type)) {
+                    merged.set(node.id, node);
+                }
+            });
+            const nodes = Array.from(merged.values());
+            const resultNodes = nodes.filter(node => node.type === 'result');
+            if (resultNodes.length > 1) {
+                const radius = 22;
+                resultNodes.forEach((node, index) => {
+                    const angle = (index / resultNodes.length) * Math.PI * 2;
+                    const dx = Math.cos(angle) * radius;
+                    const dy = Math.sin(angle) * radius;
+                    node.x += dx;
+                    node.y += dy;
+                    node.fx = node.x;
+                    node.fy = node.y;
+                });
+            }
+            const resultGroups = new Map();
+            nodes.forEach(node => {
+                if (node.type !== 'result') return;
+                const key = `${node.x.toFixed(2)}|${node.y.toFixed(2)}`;
+                if (!resultGroups.has(key)) {
+                    resultGroups.set(key, []);
+                }
+                resultGroups.get(key).push(node);
+            });
+            resultGroups.forEach(group => {
+                if (group.length <= 1) return;
+                const radius = 18;
+                group.forEach((node, index) => {
+                    const angle = (index / group.length) * Math.PI * 2;
+                    const dx = Math.cos(angle) * radius;
+                    const dy = Math.sin(angle) * radius;
+                    node.x += dx;
+                    node.y += dy;
+                    node.fx = node.x;
+                    node.fy = node.y;
+                });
+            });
+            nodes.sort((a, b) => {
+                const rank = (node) => {
+                    if (node.id === mapFocusId) return 4;
+                    if (node.type === 'focus') return 3;
+                    if (node.type === 'result') return 2;
+                    if (node.type === 'neighbor') return 1;
+                    return 0;
+                };
+                return rank(a) - rank(b);
+            });
+            const links = buildMapLinks(nodes);
+
+            if (!mapGraph) {
+                const graphContainer = document.getElementById('mapGraph');
+                mapGraph = ForceGraph()(graphContainer);
+                mapGraph
+                    .nodeId('id')
+                    .backgroundColor('#0f1624')
+                    .linkColor(link => {
+                        if (mapFocusDocUrl && link.url === mapFocusDocUrl) {
+                            return 'rgba(255, 213, 79, 0.7)';
+                        }
+                        return 'rgba(196, 206, 226, 0.15)';
+                    })
+                    .linkWidth(link => (mapFocusDocUrl && link.url === mapFocusDocUrl ? 1.2 : 0.6))
+                    .nodeColor(node => {
+                        if (node.type === 'result' || node.type === 'focus' || node.id === mapFocusId) {
+                            return 'rgba(0, 0, 0, 0)';
+                        }
+                        return '#8a94a6';
+                    })
+                    .nodeCanvasObjectMode(node => {
+                        if (node.type === 'result' || node.type === 'focus' || node.id === mapFocusId) {
+                            return 'after';
+                        }
+                        return 'replace';
+                    })
+                    .nodeLabel(node => {
+                        const keywordLabel = node.keywords?.length ? node.keywords.join(' · ') : '';
+                        const headingLabel = node.heading_hierarchy || node.section || '';
+                        return mapZoomLevel < 0.9 ? keywordLabel : headingLabel;
+                    })
+                    .nodeCanvasObject((node, ctx, globalScale) => {
+                        if (node.type === 'result' || node.type === 'focus' || node.id === mapFocusId) {
+                            const radius = (node.type === 'focus' ? 7 : 6.5) / Math.max(globalScale, 1);
+                            const color = '#ffd54f';
+                            ctx.beginPath();
+                            ctx.globalAlpha = 1;
+                            ctx.fillStyle = color;
+                            ctx.shadowColor = color;
+                            ctx.shadowBlur = 18;
+                            ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+                            ctx.fill();
+                            ctx.shadowBlur = 0;
+                            return;
+                        }
+                        const isFocus = node.type === 'focus' || node.id === mapFocusId;
+                        const baseRadius = node.type === 'result' ? 6 : node.type === 'focus' ? 7 : node.type === 'neighbor' ? 4 : 2.4;
+                        const radius = baseRadius / Math.max(globalScale, 1);
+                        const color = isFocus || node.type === 'result'
+                            ? '#ffd54f'
+                            : node.type === 'neighbor'
+                                ? '#7aa2ff'
+                                : '#8a94a6';
+
+                        ctx.beginPath();
+                        ctx.globalAlpha = node.type === 'map' ? 0.4 : 1;
+                        ctx.fillStyle = color;
+                        ctx.shadowColor = node.type === 'result' || isFocus ? color : 'transparent';
+                        ctx.shadowBlur = node.type === 'result' || isFocus ? 14 : 0;
+                        ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+                        ctx.fill();
+
+                        if (isFocus) {
+                            ctx.strokeStyle = '#ffffff';
+                            ctx.lineWidth = 1.5 / Math.max(globalScale, 1);
+                            ctx.stroke();
+                        }
+                        ctx.shadowBlur = 0;
+                        ctx.globalAlpha = 1;
+                    })
+                    .onNodeClick(async (node) => {
+                        mapFocusId = node.id;
+                        mapFocusDocUrl = node.url || null;
+                        updateMapPreview(node);
+                        centerOnNode(node.id, { animate: true, zoom: true });
+                        if (mapGraph.refresh) {
+                            mapGraph.refresh();
+                        } else {
+                            mapGraph.graphData(mapGraph.graphData());
+                        }
+                        await loadNodeNeighbors(node.id);
+                    });
+
+                if (mapGraph.onZoom) {
+                    mapGraph.onZoom(({ k }) => {
+                        mapZoomLevel = k;
+                    });
+                }
+            }
+
+            mapGraph.graphData({ nodes, links });
+            mapGraph.cooldownTicks(0);
+            resizeMapGraph();
+            if (visualization.center && mapGraph.centerAt) {
+                mapGraph.centerAt(visualization.center.x * 320, visualization.center.y * 320);
+            }
+            if (visualization.focusId) {
+                mapFocusId = visualization.focusId;
+            }
+            if (autoFit && mapGraph.zoomToFit) {
+                setTimeout(() => {
+                    resizeMapGraph();
+                    mapGraph.zoomToFit(500, 60);
+                }, 0);
+            }
+            if (visualization.focusId) {
+                centerOnNode(visualization.focusId, { animate: false, zoom: false });
+            }
+        }
+
+        function resizeMapGraph() {
+            if (!mapGraph) return;
+            const graphContainer = document.getElementById('mapGraph');
+            if (!graphContainer) return;
+            const rect = graphContainer.getBoundingClientRect();
+            if (mapGraph.width && mapGraph.height) {
+                mapGraph.width(Math.max(1, rect.width));
+                mapGraph.height(Math.max(1, rect.height));
+            }
+        }
+
+        function centerOnNode(nodeId, options) {
+            if (!mapGraph) return;
+            const data = mapGraph.graphData();
+            const node = data?.nodes?.find(item => item.id === nodeId);
+            if (!node) return;
+            const animate = options?.animate ?? false;
+            const duration = animate ? 500 : 0;
+            const shouldZoom = options?.zoom ?? false;
+            requestAnimationFrame(() => {
+                resizeMapGraph();
+                if (mapGraph.centerAt) {
+                    mapGraph.centerAt(node.x, node.y, duration);
+                }
+                if (shouldZoom && mapGraph.zoom) {
+                    mapGraph.zoom(2.4, duration);
+                }
+            });
+        }
+
+        async function loadNodeNeighbors(chunkId) {
+            if (!mapMcpPort) return;
+            try {
+                const response = await fetch(`http://localhost:${mapMcpPort}/neighbors`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chunk_id: chunkId, limit: 12 })
+                });
+                const data = await response.json();
+                if (data.visualization) {
+                    renderMapVisualization(data.visualization, { mergeMap: true, autoFit: false });
+                    if (mapFocusId) {
+                        centerOnNode(mapFocusId, { animate: false, zoom: false });
+                    }
+                }
+            } catch (error) {
+                return;
+            }
+        }
+
+        async function updateMapPreview(node) {
+            const previewMeta = document.getElementById('mapPreviewMeta');
+            const previewContent = document.getElementById('mapPreviewContent');
+            if (!previewMeta || !previewContent) return;
+            const fileLabel = getChunkFileLabel(node.url);
+            const headingLabel = node.heading_hierarchy || node.section || '';
+            previewMeta.textContent = `${fileLabel} · ${t('map.previewChunk', { index: node.chunk_index + 1, total: node.total_chunks })}` + (headingLabel ? ` · ${headingLabel}` : '');
+            previewContent.textContent = t('map.previewLoading');
+
+            const cache = await loadChunkCache(node.url);
+            const cachedChunk = cache?.get(node.chunk_index);
+            if (cachedChunk?.content) {
+                previewContent.textContent = cachedChunk.content;
+            } else {
+                previewContent.textContent = t('map.previewEmpty');
             }
         }
 
@@ -4166,6 +4851,7 @@
 
             setupLanguageSelector(); // Set up language selector event listener
             setupLlmProviderListener(); // Set up LLM provider change listener
+            setupMapListeners(); // Set up map search listeners
             initLanguage().then(() => {
                 // Wait for translations to load before loading profiles
                 loadProfiles();

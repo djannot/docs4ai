@@ -17,6 +17,7 @@ export class DatabaseManager {
 
     constructor(dbPath: string, embeddingDimension: number = LOCAL_EMBEDDING_DIMENSION) {
         this.db = new Database(dbPath);
+        this.db.pragma('foreign_keys = ON');
         this.embeddingDimension = embeddingDimension;
         loadSqliteVec(this.db);
         this.createTables();
@@ -88,6 +89,22 @@ export class DatabaseManager {
                 )
             `);
         }
+
+        const coordsRow = this.db.prepare(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='chunk_coords'"
+        ).get() as { sql?: string } | undefined;
+        const coordsSql = coordsRow?.sql ?? '';
+        if (coordsSql.includes('FOREIGN KEY') || coordsSql.includes('REFERENCES vec_items')) {
+            this.db.exec('DROP TABLE IF EXISTS chunk_coords');
+        }
+
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS chunk_coords (
+                chunk_id TEXT PRIMARY KEY,
+                x REAL,
+                y REAL
+            )
+        `);
 
         const ftsRow = this.db.prepare(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='fts_chunks'"
@@ -241,6 +258,7 @@ export class DatabaseManager {
         const countRow = countStmt.get(url) as { count: number };
         const deletedCount = Number(countRow.count);
 
+        this.db.prepare('DELETE FROM chunk_coords WHERE chunk_id IN (SELECT chunk_id FROM vec_items WHERE url = ?)').run(url);
         const stmt = this.db.prepare('DELETE FROM vec_items WHERE url = ?');
         stmt.run(url);
         this.db.prepare('DELETE FROM fts_chunks WHERE url = ?').run(url);
@@ -256,6 +274,12 @@ export class DatabaseManager {
 
     getTotalChunksCount(): number {
         return this._totalChunksCount;
+    }
+
+    getChunkCoordsCount(): number {
+        const stmt = this.db.prepare('SELECT COUNT(*) as count FROM chunk_coords');
+        const row = stmt.get() as { count: number };
+        return Number(row.count);
     }
 
     upsertFileInfo(filePath: string, hash: string, modifiedAt: Date, chunkCount: number) {
@@ -337,10 +361,39 @@ export class DatabaseManager {
         return this._trackedFilesCount;
     }
 
+    getAllEmbeddings(): { chunkId: string; embedding: Float32Array | Buffer }[] {
+        const stmt = this.db.prepare('SELECT chunk_id, embedding FROM vec_items');
+        const rows = stmt.all() as { chunk_id: string; embedding: Float32Array | Buffer }[];
+        return rows.map(row => ({
+            chunkId: row.chunk_id,
+            embedding: row.embedding
+        }));
+    }
+
+    upsertChunkCoords(coords: Array<{ chunkId: string; x: number; y: number }>) {
+        if (coords.length === 0) return;
+        const insertStmt = this.db.prepare(`
+            INSERT INTO chunk_coords (chunk_id, x, y)
+            VALUES (?, ?, ?)
+            ON CONFLICT(chunk_id) DO UPDATE SET x = excluded.x, y = excluded.y
+        `);
+        const transaction = this.db.transaction((items: Array<{ chunkId: string; x: number; y: number }>) => {
+            for (const item of items) {
+                insertStmt.run(item.chunkId, item.x, item.y);
+            }
+        });
+        transaction(coords);
+    }
+
+    clearChunkCoords() {
+        this.db.exec('DELETE FROM chunk_coords');
+    }
+
     clearAllData() {
         this.db.exec('DELETE FROM vec_items');
         this.db.exec('DELETE FROM fts_chunks');
         this.db.exec('DELETE FROM files');
+        this.db.exec('DELETE FROM chunk_coords');
         this._trackedFilesCount = 0;
         this._totalChunksCount = 0;
         console.log('Cleared all data');
