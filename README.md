@@ -168,18 +168,11 @@ When the MCP server is running, the app also shows a **Configure Clients** panel
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
-| `/query` | POST | Query with `{ queryText, limit, includeVisualization }` |
-| `/map` | POST | Map overview payload for the UI |
-| `/neighbors` | POST | Neighbor map for a `{ chunk_id }` |
 | `/mcp` | POST | MCP-compatible endpoint |
 
-### Example Query
+### Example Query (MCP)
 
-```bash
-curl -X POST http://localhost:3333/query \
-  -H "Content-Type: application/json" \
-  -d '{"queryText": "How do I configure X?", "limit": 5, "includeVisualization": true}'
-```
+Use the MCP JSON-RPC interface to query documents from external clients.
 
 ## Knowledge Map
 
@@ -209,16 +202,6 @@ score = 1 / (60 + rank_fts) + 1 / (60 + rank_vector)
 
 This keeps part numbers and exact phrases accurate while still surfacing conceptually related documents.
 
-## Integration with External MCP Server
-
-The database is also compatible with the doc2vec MCP server:
-
-```bash
-SQLITE_DB_DIR=/path/to/your/databases node mcp/dist/index.js
-```
-
-Database naming: Name your database file as needed (e.g., `my-docs.db`)
-
 ## Database Schema
 
 Creates a proper `vec0` virtual table compatible with sqlite-vec. Vector dimensions adapt based on your chosen embedding provider:
@@ -226,7 +209,6 @@ Creates a proper `vec0` virtual table compatible with sqlite-vec. Vector dimensi
 ```sql
 CREATE VIRTUAL TABLE vec_items USING vec0(
     embedding FLOAT[dimension],  -- 1024 (Qwen3 Embedding) or 3072 (OpenAI)
-    version TEXT,
     heading_hierarchy TEXT,
     section TEXT,
     chunk_id TEXT UNIQUE,
@@ -249,6 +231,16 @@ CREATE VIRTUAL TABLE fts_chunks USING fts5(
     heading_hierarchy,
     url,
     chunk_id UNINDEXED
+)
+```
+
+The Knowledge Map stores 2D coordinates in a separate table:
+
+```sql
+CREATE TABLE chunk_coords (
+    chunk_id TEXT PRIMARY KEY,
+    x REAL,
+    y REAL
 )
 ```
 
