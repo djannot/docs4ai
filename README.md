@@ -163,6 +163,8 @@ The app includes a **built-in MCP server** that can be started directly from the
 2. The server runs on the configured port (default: 3333)
 3. Query your documents via HTTP
 
+When the MCP server is running, the app also shows a **Configure Clients** panel with setup snippets for popular clients (e.g., VS Code) so you can connect immediately.
+
 ### Endpoints
 
 | Endpoint | Method | Description |
