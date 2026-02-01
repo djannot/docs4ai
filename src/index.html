@@ -2564,7 +2564,9 @@
                     document.getElementById(`totalChunks-${stats.profileId}`).textContent = stats.totalChunks;
                     
                     // Update token/cost stats (only visible for OpenAI)
-                    const isOpenAI = stats.embeddingProvider === 'openai';
+                    const providerSelect = document.getElementById(`embeddingProvider-${stats.profileId}`);
+                    const selectedProvider = providerSelect?.value || stats.embeddingProvider || 'local';
+                    const isOpenAI = selectedProvider === 'openai';
                     const tokensRow = document.getElementById(`tokensRow-${stats.profileId}`);
                     const costRow = document.getElementById(`costRow-${stats.profileId}`);
                     if (tokensRow) tokensRow.style.display = isOpenAI ? 'flex' : 'none';
@@ -2574,6 +2576,23 @@
                     if (tokensEl) tokensEl.textContent = (stats.totalTokens || 0).toLocaleString();
                     const costEl = document.getElementById(`totalCost-${stats.profileId}`);
                     if (costEl) costEl.textContent = `$${(stats.totalCost || 0).toFixed(4)}`;
+
+                    const apiKeyGroup = document.getElementById(`apiKeyGroup-${stats.profileId}`);
+                    const embeddingContextLengthGroup = document.getElementById(`embeddingContextLengthGroup-${stats.profileId}`);
+                    const embeddingInfo = document.getElementById(`embeddingInfo-${stats.profileId}`);
+                    const modelDescription = document.getElementById(`modelDescription-${stats.profileId}`);
+                    if (apiKeyGroup) {
+                        apiKeyGroup.style.display = isOpenAI ? 'block' : 'none';
+                    }
+                    if (embeddingContextLengthGroup) {
+                        embeddingContextLengthGroup.style.display = isOpenAI ? 'none' : 'block';
+                    }
+                    if (embeddingInfo) {
+                        embeddingInfo.textContent = isOpenAI ? t('ui.usesEmbedding') : t('ui.localEmbeddingInfo');
+                    }
+                    if (modelDescription) {
+                        modelDescription.textContent = getModelDescription(selectedProvider);
+                    }
                     
                     // Update sync progress indicator
                     const syncProgressCard = document.getElementById(`syncProgressCard-${stats.profileId}`);

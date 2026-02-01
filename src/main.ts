@@ -516,8 +516,12 @@ function setupIpcHandlers() {
             const profile = appSettings.profiles![profileIndex];
             if (updates.embeddingProvider !== undefined || updates.openAIApiKey !== undefined) {
                 // Recreate embedding service with new settings
-                if (profile.embeddingProvider === 'openai' && profile.openAIApiKey) {
-                    state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey, profile.embeddingContextLength);
+                if (profile.embeddingProvider === 'openai') {
+                    if (profile.openAIApiKey) {
+                        state.embeddingService = new EmbeddingService('openai', profile.openAIApiKey, profile.embeddingContextLength);
+                    } else {
+                        state.embeddingService = null;
+                    }
                 } else {
                     state.embeddingService = new EmbeddingService(migrateEmbeddingProvider(profile.embeddingProvider), undefined, profile.embeddingContextLength);
                 }
