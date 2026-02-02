@@ -58,6 +58,14 @@ contextBridge.exposeInMainWorld('api', {
     selectDatabase: () => ipcRenderer.invoke('select-database'),
     startDriveAuth: (profileId: string) => ipcRenderer.invoke('start-drive-auth', profileId),
     disconnectDrive: (profileId: string) => ipcRenderer.invoke('disconnect-drive', profileId),
+    listDriveFolders: (profileId: string, parentId: string | null, query: string | null, pageToken?: string) =>
+        ipcRenderer.invoke('list-drive-folders', profileId, parentId, query, pageToken),
+    listDriveFoldersWithDrive: (profileId: string, parentId: string | null, query: string | null, pageToken: string | undefined, driveId: string | null) =>
+        ipcRenderer.invoke('list-drive-folders', profileId, parentId, query, pageToken, driveId),
+    listDriveSharedDrives: (profileId: string, query: string | null, pageToken?: string) =>
+        ipcRenderer.invoke('list-drive-shared-drives', profileId, query, pageToken),
+    getDriveFolderPath: (profileId: string, folderId: string) =>
+        ipcRenderer.invoke('get-drive-folder-path', profileId, folderId),
     getStats: (profileId: string) => ipcRenderer.invoke('get-stats', profileId),
     getFiles: (profileId: string) => ipcRenderer.invoke('get-files', profileId),
     getChunks: (profileId: string, filePath: string) => ipcRenderer.invoke('get-chunks', profileId, filePath),

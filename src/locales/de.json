@@ -187,6 +187,20 @@
     "driveUnknownAccount": "Unbekanntes Konto",
     "driveFolderId": "Drive-Ordner-ID oder URL",
     "driveFolderPlaceholder": "Google-Drive-Ordnerlink oder -ID einfügen",
-    "driveFolderHelp": "Wählen Sie einen Drive-Ordner zum Indizieren. Nur eine Quelle pro Profil."
+    "driveFolderHelp": "Wählen Sie einen Drive-Ordner zum Indizieren. Nur eine Quelle pro Profil.",
+    "driveFolderBrowse": "Durchsuchen",
+    "driveFolderSelected": "Ausgewählt: {{name}}",
+    "driveFolderSearch": "Ordner suchen",
+    "driveSearch": "Suchen",
+    "driveFolderUp": "Nach oben",
+    "driveFolderOpen": "Öffnen",
+    "driveFolderSelect": "Auswählen",
+    "driveFolderSelectCurrent": "Diesen Ordner auswählen",
+    "driveFolderLoadMore": "Mehr laden",
+    "driveFolderEmpty": "Keine Ordner gefunden",
+    "driveMyDrive": "Mein Drive",
+    "driveSharedDrives": "Geteilte Laufwerke",
+    "loading": "Laden...",
+    "driveFolderChangeWarning": "Das Wechseln des Drive-Ordners erfordert das Löschen der Datenbank und das erneute Synchronisieren aller Dateien aus dem neuen Ordner.\n\nMöchten Sie fortfahren?"
   }
 }

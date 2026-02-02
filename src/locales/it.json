@@ -187,6 +187,20 @@
     "driveUnknownAccount": "Account sconosciuto",
     "driveFolderId": "ID o URL cartella Drive",
     "driveFolderPlaceholder": "Incolla il link o l'ID della cartella Google Drive",
-    "driveFolderHelp": "Scegli una cartella Drive da indicizzare. Una sola origine per profilo."
+    "driveFolderHelp": "Scegli una cartella Drive da indicizzare. Una sola origine per profilo.",
+    "driveFolderBrowse": "Sfoglia",
+    "driveFolderSelected": "Selezionato: {{name}}",
+    "driveFolderSearch": "Cerca cartelle",
+    "driveSearch": "Cerca",
+    "driveFolderUp": "Su",
+    "driveFolderOpen": "Apri",
+    "driveFolderSelect": "Seleziona",
+    "driveFolderSelectCurrent": "Seleziona questa cartella",
+    "driveFolderLoadMore": "Carica altro",
+    "driveFolderEmpty": "Nessuna cartella trovata",
+    "driveMyDrive": "Il mio Drive",
+    "driveSharedDrives": "Unità condivise",
+    "loading": "Caricamento...",
+    "driveFolderChangeWarning": "Cambiare la cartella Drive richiede l'eliminazione del database e la risincronizzazione di tutti i file dalla nuova cartella.\n\nVuoi continuare?"
   }
 }

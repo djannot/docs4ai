@@ -187,6 +187,20 @@
     "driveUnknownAccount": "अज्ञात खाता",
     "driveFolderId": "Drive फ़ोल्डर ID या URL",
     "driveFolderPlaceholder": "Google Drive फ़ोल्डर लिंक या ID पेस्ट करें",
-    "driveFolderHelp": "इंडेक्स करने के लिए Drive फ़ोल्डर चुनें। प्रति प्रोफ़ाइल केवल एक स्रोत।"
+    "driveFolderHelp": "इंडेक्स करने के लिए Drive फ़ोल्डर चुनें। प्रति प्रोफ़ाइल केवल एक स्रोत।",
+    "driveFolderBrowse": "ब्राउज़ करें",
+    "driveFolderSelected": "चयनित: {{name}}",
+    "driveFolderSearch": "फ़ोल्डर खोजें",
+    "driveSearch": "खोजें",
+    "driveFolderUp": "ऊपर",
+    "driveFolderOpen": "खोलें",
+    "driveFolderSelect": "चुनें",
+    "driveFolderSelectCurrent": "इस फ़ोल्डर का चयन करें",
+    "driveFolderLoadMore": "और लोड करें",
+    "driveFolderEmpty": "कोई फ़ोल्डर नहीं मिला",
+    "driveMyDrive": "मेरा Drive",
+    "driveSharedDrives": "साझा ड्राइव",
+    "loading": "लोड हो रहा है...",
+    "driveFolderChangeWarning": "Drive फ़ोल्डर बदलने के लिए डेटाबेस हटाना होगा और नए फ़ोल्डर की सभी फ़ाइलें फिर से सिंक करनी होंगी।\n\nक्या आप जारी रखना चाहते हैं?"
   }
 }

@@ -187,6 +187,20 @@
     "driveUnknownAccount": "Conta desconhecida",
     "driveFolderId": "ID ou URL da pasta do Drive",
     "driveFolderPlaceholder": "Cole o link ou ID da pasta do Google Drive",
-    "driveFolderHelp": "Escolha uma pasta do Drive para indexar. Apenas uma fonte por perfil."
+    "driveFolderHelp": "Escolha uma pasta do Drive para indexar. Apenas uma fonte por perfil.",
+    "driveFolderBrowse": "Explorar",
+    "driveFolderSelected": "Selecionado: {{name}}",
+    "driveFolderSearch": "Pesquisar pastas",
+    "driveSearch": "Pesquisar",
+    "driveFolderUp": "Acima",
+    "driveFolderOpen": "Abrir",
+    "driveFolderSelect": "Selecionar",
+    "driveFolderSelectCurrent": "Selecionar esta pasta",
+    "driveFolderLoadMore": "Carregar mais",
+    "driveFolderEmpty": "Nenhuma pasta encontrada",
+    "driveMyDrive": "Meu Drive",
+    "driveSharedDrives": "Unidades compartilhadas",
+    "loading": "Carregando...",
+    "driveFolderChangeWarning": "Alterar a pasta do Drive requer excluir o banco de dados e sincronizar novamente todos os arquivos da nova pasta.\n\nDeseja continuar?"
   }
 }

@@ -158,6 +158,8 @@ interface ProfileSettings {
     recursive: boolean;
     syncSource?: 'local' | 'drive';
     driveFolderId?: string;
+    driveFolderName?: string;
+    driveFolderDriveId?: string;
     driveAccountEmail?: string;
     driveRefreshToken?: string;
     mcpServerEnabled: boolean;
@@ -568,6 +570,8 @@ function setupIpcHandlers() {
                 recursive: true,
                 syncSource: 'local',
                 driveFolderId: '',
+                driveFolderName: '',
+                driveFolderDriveId: '',
                 driveAccountEmail: '',
                 driveRefreshToken: '',
                 mcpServerEnabled: false,
@@ -958,11 +962,167 @@ function setupIpcHandlers() {
         appSettings.profiles![profileIndex] = {
             ...profile,
             driveRefreshToken: '',
-            driveAccountEmail: ''
+            driveAccountEmail: '',
+            driveFolderId: '',
+            driveFolderName: '',
+            driveFolderDriveId: ''
         };
         store.store = appSettings;
 
         return { success: true };
+    });
+
+    ipcMain.handle('list-drive-folders', async (_event: IpcMainInvokeEvent, profileId: string, parentId: string | null, query: string | null, pageToken?: string, driveId?: string | null) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        if (!profile) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        if (!profile.driveRefreshToken) {
+            return { success: false, error: 'Google Drive account not connected' };
+        }
+
+        const drive = createDriveClient(profile);
+        if (!drive) {
+            return { success: false, error: 'Google Drive credentials not configured' };
+        }
+
+        const parent = parentId || 'root';
+        const sanitizedQuery = (query || '').replace(/'/g, "\\'").trim();
+        let q = `'${parent}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+        if (sanitizedQuery) {
+            q += ` and name contains '${sanitizedQuery}'`;
+        }
+
+        const response = await drive.files.list({
+            q,
+            fields: 'nextPageToken, files(id, name)',
+            orderBy: 'name',
+            pageToken: pageToken || undefined,
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+            driveId: driveId || undefined,
+            corpora: driveId ? 'drive' : undefined
+        });
+
+        const folders = (response.data.files || []).map(file => ({
+            id: file.id || '',
+            name: file.name || ''
+        })).filter(folder => folder.id && folder.name);
+
+        return {
+            success: true,
+            folders,
+            nextPageToken: response.data.nextPageToken || null
+        };
+    });
+
+    ipcMain.handle('list-drive-shared-drives', async (_event: IpcMainInvokeEvent, profileId: string, query: string | null, pageToken?: string) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        if (!profile) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        if (!profile.driveRefreshToken) {
+            return { success: false, error: 'Google Drive account not connected' };
+        }
+
+        const drive = createDriveClient(profile);
+        if (!drive) {
+            return { success: false, error: 'Google Drive credentials not configured' };
+        }
+
+        const response = await drive.drives.list({
+            fields: 'nextPageToken, drives(id, name)',
+            pageToken: pageToken || undefined,
+            q: query ? `name contains '${query.replace(/'/g, "\\'")}'` : undefined,
+            useDomainAdminAccess: false
+        });
+
+        const drives = (response.data.drives || []).map(item => ({
+            id: item.id || '',
+            name: item.name || ''
+        })).filter(item => item.id && item.name);
+
+        return {
+            success: true,
+            drives,
+            nextPageToken: response.data.nextPageToken || null
+        };
+    });
+
+    ipcMain.handle('get-drive-folder-path', async (_event: IpcMainInvokeEvent, profileId: string, folderId: string) => {
+        const appSettings = store.store;
+        const profile = appSettings.profiles?.find(p => p.id === profileId);
+        if (!profile) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        if (!profile.driveRefreshToken) {
+            return { success: false, error: 'Google Drive account not connected' };
+        }
+
+        const drive = createDriveClient(profile);
+        if (!drive) {
+            return { success: false, error: 'Google Drive credentials not configured' };
+        }
+
+        if (!folderId || folderId === 'root') {
+            return { success: true, path: [], driveId: null, driveName: null };
+        }
+
+        const path: { id: string; name: string }[] = [];
+        let currentId = folderId;
+        let driveId: string | null = null;
+        let driveName: string | null = null;
+
+        while (currentId) {
+            try {
+                const response = await drive.files.get({
+                    fileId: currentId,
+                    fields: 'id, name, parents, driveId',
+                    supportsAllDrives: true
+                });
+
+                const data = response.data;
+                if (!data.id || !data.name) {
+                    break;
+                }
+
+                path.unshift({ id: data.id, name: data.name });
+                driveId = data.driveId || driveId;
+
+                const parents = data.parents || [];
+                const parentId = parents[0];
+                if (!parentId || parentId === 'root') {
+                    break;
+                }
+                currentId = parentId;
+            } catch (error) {
+                // Selected folder might be a shared drive root (driveId)
+                try {
+                    const driveInfo = await drive.drives.get({ driveId: currentId, fields: 'name' });
+                    driveId = currentId;
+                    driveName = driveInfo.data.name || null;
+                } catch (driveError) {
+                    console.warn('Failed to resolve drive path:', driveError);
+                }
+                break;
+            }
+        }
+
+        if (driveId) {
+            try {
+                const driveInfo = await drive.drives.get({ driveId, fields: 'name' });
+                driveName = driveInfo.data.name || null;
+            } catch (error) {
+                console.warn('Failed to resolve shared drive name:', error);
+            }
+        }
+
+        return { success: true, path, driveId, driveName };
     });
 
     // Get stats for a specific profile
@@ -1703,15 +1863,41 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
         }
 
         const cacheDir = path.join(app.getPath('userData'), 'drive-cache', profileId);
-        state.syncer = new DriveSyncer(drive, profile.driveFolderId, cacheDir, {
+        const rootName = profile.driveFolderName || 'My Drive';
+        let driveId = profile.driveFolderDriveId || null;
+
+        if (!driveId && profile.driveFolderId && profile.driveFolderId !== 'root') {
+            try {
+                const driveInfo = await drive.files.get({
+                    fileId: profile.driveFolderId,
+                    fields: 'driveId',
+                    supportsAllDrives: true
+                });
+                driveId = driveInfo.data.driveId || null;
+                if (driveId) {
+                    const appSettings = store.store;
+                    const profileIndex = appSettings.profiles?.findIndex(p => p.id === profileId) ?? -1;
+                    if (profileIndex >= 0) {
+                        appSettings.profiles![profileIndex] = {
+                            ...appSettings.profiles![profileIndex],
+                            driveFolderDriveId: driveId
+                        };
+                        store.store = appSettings;
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to resolve Drive ID for folder:', error);
+            }
+        }
+        const driveSyncer = new DriveSyncer(drive, profile.driveFolderId, cacheDir, {
             recursive,
             extensions,
-            onFileAdd: async (filePath, sourceUrl) => {
-                await processFile(profileId, filePath, false, sourceUrl);
+            onFileAdd: async (filePath, sourceUrl, displayPath) => {
+                await processFile(profileId, filePath, false, sourceUrl, displayPath);
                 sendStats(profileId);
             },
-            onFileChange: async (filePath, sourceUrl) => {
-                await processFile(profileId, filePath, false, sourceUrl);
+            onFileChange: async (filePath, sourceUrl, displayPath) => {
+                await processFile(profileId, filePath, false, sourceUrl, displayPath);
                 sendStats(profileId);
             },
             onFileDelete: async (filePath) => {
@@ -1724,6 +1910,9 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 sendStats(profileId);
             }
         });
+        driveSyncer.setRootName(rootName);
+        driveSyncer.setDriveId(driveId);
+        state.syncer = driveSyncer;
     } else {
         state.syncer = new FolderSyncer(watchedFolder, {
             recursive,
@@ -1777,7 +1966,7 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                     if (!cached) {
                         continue;
                     }
-                    await processFile(profileId, cached.localPath, false, cached.sourceUrl);
+                    await processFile(profileId, cached.localPath, false, cached.sourceUrl, cached.displayPath);
                     state.filesProcessed++;
                     sendStats(profileId);
                     await new Promise(resolve => setImmediate(resolve));
@@ -1934,7 +2123,7 @@ async function runMapProjection(profileId: string, reason: string) {
     }
 }
 
-    async function processFile(profileId: string, filePath: string, forceReprocess: boolean = false, sourceUrl?: string) {
+    async function processFile(profileId: string, filePath: string, forceReprocess: boolean = false, sourceUrl?: string, displayPath?: string) {
     const state = profileStates.get(profileId);
     if (!state || !state.database || !state.processor) return;
     
@@ -1985,7 +2174,7 @@ async function runMapProjection(profileId: string, reason: string) {
             if (fileInfo && fileInfo.hash === hash) {
                 console.log(`[${profileId}] Skipping (same hash): ${filePath}`);
                 // Update modification time even if content unchanged
-                state.database.upsertFileInfo(filePath, hash, new Date(), fileInfo.chunkCount);
+                state.database.upsertFileInfo(filePath, hash, new Date(), fileInfo.chunkCount, displayPath, sourceUrl);
                 state.status = state.syncer?.isSyncing ? 'syncing' : 'idle';
                 updateTray();
                 return;
@@ -2055,7 +2244,7 @@ async function runMapProjection(profileId: string, reason: string) {
         }
 
         // Update file info with current timestamp
-        state.database.upsertFileInfo(filePath, hash, new Date(), chunks.length);
+        state.database.upsertFileInfo(filePath, hash, new Date(), chunks.length, displayPath, sourceUrl);
 
         state.mapProjectionPending = true;
         if (!state.isInitialSyncing) {

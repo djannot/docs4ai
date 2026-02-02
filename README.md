@@ -112,7 +112,7 @@ Built applications are output to the `release/` directory.
    - **Name** - Give your profile a descriptive name
    - **Sync Source** - Choose **Local folder** or **Google Drive folder** (one per profile)
    - **Watch Folder** - Click "Select..." to choose a folder to monitor (local only)
-   - **Google Drive** - Connect your account and paste a folder ID or link (Drive only)
+   - **Google Drive** - Connect your account and browse to a Drive or Shared Drive folder
    - **Database** - Choose where to save the sqlite-vec database
    - **File Extensions** - Check the boxes for file types you want to process
    - **Recursive** - Enable to watch subdirectories
@@ -136,7 +136,7 @@ Then in a profile:
 
 1. Select **Google Drive folder** as the sync source.
 2. Click **Connect** to authorize your Google account.
-3. Paste a folder ID or link (the app extracts the ID).
+3. Browse and select a folder (My Drive or Shared Drives).
 4. Start syncing.
 
 Drive content is cached under your app data directory (e.g. `~/Library/Application Support/docs4ai/drive-cache/<profileId>` on macOS). Search results link back to the Drive file.

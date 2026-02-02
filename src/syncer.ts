@@ -5,8 +5,8 @@ import * as fs from 'fs';
 export interface SyncerOptions {
     recursive: boolean;
     extensions: string[];
-    onFileAdd: (filePath: string, sourceUrl?: string) => Promise<void>;
-    onFileChange: (filePath: string, sourceUrl?: string) => Promise<void>;
+    onFileAdd: (filePath: string, sourceUrl?: string, displayPath?: string) => Promise<void>;
+    onFileChange: (filePath: string, sourceUrl?: string, displayPath?: string) => Promise<void>;
     onFileDelete: (filePath: string) => Promise<void>;
 }
 

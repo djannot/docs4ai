@@ -187,6 +187,20 @@
     "driveUnknownAccount": "Cuenta desconocida",
     "driveFolderId": "ID o URL de la carpeta de Drive",
     "driveFolderPlaceholder": "Pega el enlace o ID de la carpeta de Google Drive",
-    "driveFolderHelp": "Elige una carpeta de Drive para indexar. Solo una fuente por perfil."
+    "driveFolderHelp": "Elige una carpeta de Drive para indexar. Solo una fuente por perfil.",
+    "driveFolderBrowse": "Explorar",
+    "driveFolderSelected": "Seleccionado: {{name}}",
+    "driveFolderSearch": "Buscar carpetas",
+    "driveSearch": "Buscar",
+    "driveFolderUp": "Arriba",
+    "driveFolderOpen": "Abrir",
+    "driveFolderSelect": "Seleccionar",
+    "driveFolderSelectCurrent": "Seleccionar esta carpeta",
+    "driveFolderLoadMore": "Cargar más",
+    "driveFolderEmpty": "No se encontraron carpetas",
+    "driveMyDrive": "Mi Drive",
+    "driveSharedDrives": "Unidades compartidas",
+    "loading": "Cargando...",
+    "driveFolderChangeWarning": "Cambiar la carpeta de Drive requiere eliminar la base de datos y volver a sincronizar todos los archivos de la nueva carpeta.\n\n¿Quieres continuar?"
   }
 }

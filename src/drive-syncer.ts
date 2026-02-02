@@ -14,12 +14,14 @@ interface DriveFileInfo {
     mimeType: string;
     modifiedTime?: string;
     webViewLink?: string;
+    drivePath?: string;
 }
 
 interface DriveIndexEntry {
     localPath: string;
     modifiedTimeMs: number;
     sourceUrl?: string;
+    displayPath?: string;
 }
 
 const GOOGLE_DOC_EXPORTS: Record<string, DriveExportRule[]> = {
@@ -40,22 +42,31 @@ const GOOGLE_DOC_EXPORTS: Record<string, DriveExportRule[]> = {
 export class DriveSyncer implements Syncer {
     private drive: drive_v3.Drive;
     private folderId: string;
+    private rootName = 'My Drive';
+    private driveId: string | null = null;
     private options: SyncerOptions;
     private cacheDir: string;
-    private pollIntervalMs: number;
+    private pollIntervalMs = 30000;
     private pollTimer: NodeJS.Timeout | null = null;
     private fileIndex: Map<string, DriveIndexEntry> = new Map();
     private inFlightDownloads: Map<string, Promise<DriveIndexEntry>> = new Map();
     private _isSyncing = false;
     private isRefreshing = false;
 
-    constructor(drive: drive_v3.Drive, folderId: string, cacheDir: string, options: SyncerOptions, pollIntervalMs: number = 30000) {
+    constructor(drive: drive_v3.Drive, folderId: string, cacheDir: string, options: SyncerOptions) {
         this.drive = drive;
         this.folderId = folderId;
         this.cacheDir = cacheDir;
         this.options = options;
-        this.pollIntervalMs = pollIntervalMs;
         fs.mkdirSync(this.cacheDir, { recursive: true });
+    }
+
+    setRootName(rootName: string) {
+        this.rootName = rootName || 'My Drive';
+    }
+
+    setDriveId(driveId: string | null) {
+        this.driveId = driveId || null;
     }
 
     get isSyncing(): boolean {
@@ -165,9 +176,9 @@ export class DriveSyncer implements Syncer {
 
                 const previous = this.fileIndex.get(file.id);
                 if (!previous) {
-                    await this.options.onFileAdd(cached.localPath, cached.sourceUrl);
+                    await this.options.onFileAdd(cached.localPath, cached.sourceUrl, cached.displayPath);
                 } else if (previous.modifiedTimeMs < cached.modifiedTimeMs) {
-                    await this.options.onFileChange(cached.localPath, cached.sourceUrl);
+                    await this.options.onFileChange(cached.localPath, cached.sourceUrl, cached.displayPath);
                 }
             }
 
@@ -187,7 +198,7 @@ export class DriveSyncer implements Syncer {
         }
     }
 
-    private resolveFile(file: DriveFileInfo): { localPath: string; exportRule?: DriveExportRule } | null {
+    private resolveFile(file: DriveFileInfo): { localPath: string; exportRule?: DriveExportRule; displayPath?: string } | null {
         if (file.mimeType === 'application/vnd.google-apps.folder') {
             return null;
         }
@@ -207,7 +218,8 @@ export class DriveSyncer implements Syncer {
         }
 
         const localPath = path.join(this.cacheDir, `${file.id}${extension || ''}`);
-        return { localPath, exportRule };
+        const displayPath = this.buildDisplayPath(file, extension);
+        return { localPath, exportRule, displayPath };
     }
 
     private hasValidExtension(extension: string): boolean {
@@ -216,7 +228,7 @@ export class DriveSyncer implements Syncer {
         return this.options.extensions.includes(extension);
     }
 
-    private async ensureCachedForFile(file: DriveFileInfo, resolved: { localPath: string; exportRule?: DriveExportRule }): Promise<DriveIndexEntry | null> {
+    private async ensureCachedForFile(file: DriveFileInfo, resolved: { localPath: string; exportRule?: DriveExportRule; displayPath?: string }): Promise<DriveIndexEntry | null> {
         const existing = this.inFlightDownloads.get(file.id);
         if (existing) {
             return await existing;
@@ -231,11 +243,12 @@ export class DriveSyncer implements Syncer {
         }
     }
 
-    private async ensureCached(file: DriveFileInfo, resolved: { localPath: string; exportRule?: DriveExportRule }): Promise<DriveIndexEntry> {
+    private async ensureCached(file: DriveFileInfo, resolved: { localPath: string; exportRule?: DriveExportRule; displayPath?: string }): Promise<DriveIndexEntry> {
         const modifiedTimeMs = file.modifiedTime ? new Date(file.modifiedTime).getTime() : 0;
         const cached = this.fileIndex.get(file.id);
         let needsDownload = !cached || cached.modifiedTimeMs < modifiedTimeMs || !fs.existsSync(cached.localPath);
         const localPath = resolved.localPath;
+        const displayPath = resolved.displayPath;
 
         if (!needsDownload && cached) {
             const storedPath = cached.localPath || localPath;
@@ -266,7 +279,7 @@ export class DriveSyncer implements Syncer {
             }
         }
 
-        return { localPath, modifiedTimeMs, sourceUrl };
+        return { localPath, modifiedTimeMs, sourceUrl, displayPath };
     }
 
     private async downloadFile(file: DriveFileInfo, localPath: string, exportMimeType?: string): Promise<void> {
@@ -317,11 +330,11 @@ export class DriveSyncer implements Syncer {
     private async fetchFiles(): Promise<DriveFileInfo[]> {
         console.log(`[DriveSyncer] Listing folder ${this.folderId} (recursive=${this.options.recursive})`);
         const files: DriveFileInfo[] = [];
-        await this.listFolder(this.folderId, files, this.options.recursive);
+        await this.listFolder(this.folderId, files, this.options.recursive, this.rootName, this.driveId);
         return files;
     }
 
-    private async listFolder(folderId: string, files: DriveFileInfo[], recursive: boolean): Promise<void> {
+    private async listFolder(folderId: string, files: DriveFileInfo[], recursive: boolean, currentPath: string, driveId: string | null): Promise<void> {
         let pageToken: string | undefined;
 
         do {
@@ -330,7 +343,9 @@ export class DriveSyncer implements Syncer {
                 fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink)',
                 pageToken,
                 supportsAllDrives: true,
-                includeItemsFromAllDrives: true
+                includeItemsFromAllDrives: true,
+                driveId: driveId || undefined,
+                corpora: driveId ? 'drive' : undefined
             }), 'list');
 
             const fetched = response.data.files || [];
@@ -341,12 +356,13 @@ export class DriveSyncer implements Syncer {
                     name: file.name,
                     mimeType: file.mimeType,
                     modifiedTime: file.modifiedTime || undefined,
-                    webViewLink: file.webViewLink || undefined
+                    webViewLink: file.webViewLink || undefined,
+                    drivePath: `${currentPath}/${file.name}`
                 };
 
                 if (file.mimeType === 'application/vnd.google-apps.folder') {
                     if (recursive) {
-                        await this.listFolder(file.id, files, recursive);
+                        await this.listFolder(file.id, files, recursive, `${currentPath}/${file.name}`, driveId);
                     }
                     continue;
                 }
@@ -380,5 +396,17 @@ export class DriveSyncer implements Syncer {
             return file.webViewLink;
         }
         return `https://drive.google.com/open?id=${file.id}`;
+    }
+
+    private buildDisplayPath(file: DriveFileInfo, extension: string): string {
+        const basePath = file.drivePath || file.name;
+        if (!extension) {
+            return basePath;
+        }
+        const lowerBase = basePath.toLowerCase();
+        if (lowerBase.endsWith(extension)) {
+            return basePath;
+        }
+        return `${basePath}${extension}`;
     }
 }

@@ -187,6 +187,20 @@
     "driveUnknownAccount": "未知账户",
     "driveFolderId": "Drive 文件夹 ID 或 URL",
     "driveFolderPlaceholder": "粘贴 Google Drive 文件夹链接或 ID",
-    "driveFolderHelp": "选择要索引的 Drive 文件夹。每个配置文件仅限一种来源。"
+    "driveFolderHelp": "选择要索引的 Drive 文件夹。每个配置文件仅限一种来源。",
+    "driveFolderBrowse": "浏览",
+    "driveFolderSelected": "已选择：{{name}}",
+    "driveFolderSearch": "搜索文件夹",
+    "driveSearch": "搜索",
+    "driveFolderUp": "上一级",
+    "driveFolderOpen": "打开",
+    "driveFolderSelect": "选择",
+    "driveFolderSelectCurrent": "选择此文件夹",
+    "driveFolderLoadMore": "加载更多",
+    "driveFolderEmpty": "未找到文件夹",
+    "driveMyDrive": "我的云端硬盘",
+    "driveSharedDrives": "共享云端硬盘",
+    "loading": "正在加载...",
+    "driveFolderChangeWarning": "更改 Drive 文件夹需要删除数据库并重新同步新文件夹中的所有文件。\n\n是否继续？"
   }
 }

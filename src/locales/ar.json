@@ -187,6 +187,20 @@
     "driveUnknownAccount": "حساب غير معروف",
     "driveFolderId": "معرّف مجلد Drive أو الرابط",
     "driveFolderPlaceholder": "الصق رابط مجلد Google Drive أو المعرّف",
-    "driveFolderHelp": "اختر مجلد Drive للفهرسة. مصدر واحد فقط لكل ملف تعريف."
+    "driveFolderHelp": "اختر مجلد Drive للفهرسة. مصدر واحد فقط لكل ملف تعريف.",
+    "driveFolderBrowse": "تصفح",
+    "driveFolderSelected": "المحدد: {{name}}",
+    "driveFolderSearch": "ابحث عن المجلدات",
+    "driveSearch": "بحث",
+    "driveFolderUp": "للأعلى",
+    "driveFolderOpen": "فتح",
+    "driveFolderSelect": "تحديد",
+    "driveFolderSelectCurrent": "تحديد هذا المجلد",
+    "driveFolderLoadMore": "تحميل المزيد",
+    "driveFolderEmpty": "لم يتم العثور على مجلدات",
+    "driveMyDrive": "ملفاتي في Drive",
+    "driveSharedDrives": "Drive المشترك",
+    "loading": "جارٍ التحميل...",
+    "driveFolderChangeWarning": "تغيير مجلد Drive يتطلب حذف قاعدة البيانات وإعادة مزامنة جميع الملفات من المجلد الجديد.\n\nهل تريد المتابعة؟"
   }
 }

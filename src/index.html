@@ -398,6 +398,52 @@
             margin-top: 4px;
         }
 
+        .drive-browser-toolbar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .drive-breadcrumbs {
+            font-size: 12px;
+            color: #86868b;
+            margin-bottom: 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .drive-folder-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .drive-folder-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border: 1px solid #e5e5ea;
+            border-radius: 8px;
+            background: #fafafa;
+            cursor: pointer;
+        }
+
+        .drive-folder-name {
+            font-size: 14px;
+            color: #1d1d1f;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drive-folder-actions {
+            display: flex;
+            gap: 6px;
+        }
+
         /* Modal styles */
         .modal-overlay {
             display: none;
@@ -1157,6 +1203,19 @@
         </div>
     </div>
 
+    <!-- Google Drive Folder Browser Modal -->
+    <div class="modal-overlay" id="driveBrowserModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="driveBrowserTitle">☁️ Google Drive</h2>
+                <button class="modal-close" onclick="closeDriveBrowser()">&times;</button>
+            </div>
+            <div class="modal-body" id="driveBrowserBody">
+                <div class="empty-state">Loading...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Input Dialog Modal -->
     <div class="modal-overlay" id="inputDialogModal">
         <div class="modal" style="max-width: 400px;">
@@ -1753,6 +1812,8 @@
                 ...profile,
                 syncSource: profile.syncSource || 'local',
                 driveFolderId: profile.driveFolderId || '',
+                driveFolderName: profile.driveFolderName || '',
+                driveFolderDriveId: profile.driveFolderDriveId || '',
                 driveAccountEmail: profile.driveAccountEmail || '',
                 driveRefreshToken: profile.driveRefreshToken || ''
             }));
@@ -2116,6 +2177,7 @@
             const stats = profileStats.get(profile.id) || { isSyncing: false, trackedFiles: 0, totalChunks: 0 };
             const syncSource = profile.syncSource || 'local';
             const driveConnected = !!profile.driveRefreshToken;
+            const driveFolderLabel = profile.driveFolderName || '';
             
             container.innerHTML = `
                 <div class="profile-content active" data-profile-id="${profile.id}">
@@ -2156,8 +2218,11 @@
                         </div>
                         <div class="input-group">
                             <label for="driveFolder-${profile.id}">${t('ui.driveFolderId')}</label>
-                            <input type="text" id="driveFolder-${profile.id}" value="${escapeHtml(profile.driveFolderId || '')}" placeholder="${t('ui.driveFolderPlaceholder')}">
-                            <div class="info">${t('ui.driveFolderHelp')}</div>
+                            <div class="input-row">
+                                <input type="text" id="driveFolder-${profile.id}" value="${escapeHtml(driveFolderLabel || '')}" placeholder="${t('ui.driveFolderPlaceholder')}" data-folder-id="${escapeHtml(profile.driveFolderId || '')}" readonly>
+                                <button class="btn-secondary" id="browseDriveBtn-${profile.id}">${t('ui.driveFolderBrowse')}</button>
+                            </div>
+                            <div class="info" id="driveFolderSelected-${profile.id}">${driveFolderLabel ? t('ui.driveFolderSelected', { name: escapeHtml(driveFolderLabel) }) : t('ui.driveFolderHelp')}</div>
                         </div>
                     </div>
 
@@ -2315,6 +2380,7 @@
             const driveConnectBtn = document.getElementById(`driveConnectBtn-${profileId}`);
             const driveDisconnectBtn = document.getElementById(`driveDisconnectBtn-${profileId}`);
             const driveFolderInput = document.getElementById(`driveFolder-${profileId}`);
+            const browseDriveBtn = document.getElementById(`browseDriveBtn-${profileId}`);
             
             if (profileNameInput) {
                 // Save on blur (when user finishes editing)
@@ -2425,26 +2491,21 @@
             }
 
             if (driveFolderInput) {
-                driveFolderInput.addEventListener('blur', async () => {
-                    const profile = profiles.find(p => p.id === profileId);
-                    if (!profile) return;
-
-                    const normalized = extractDriveFolderId(driveFolderInput.value);
-                    if (normalized !== driveFolderInput.value) {
-                        driveFolderInput.value = normalized;
-                    }
-
-                    if (normalized !== (profile.driveFolderId || '')) {
-                        await window.api.updateProfile(profileId, { driveFolderId: normalized });
-                        profile.driveFolderId = normalized;
-                    }
-                });
-
                 driveFolderInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        driveFolderInput.blur();
                     }
+                });
+            }
+
+            if (browseDriveBtn) {
+                browseDriveBtn.addEventListener('click', async () => {
+                    const profile = profiles.find(p => p.id === profileId);
+                    if (!profile?.driveRefreshToken) {
+                        alert(t('ui.driveNotConnected'));
+                        return;
+                    }
+                    openDriveBrowser(profileId);
                 });
             }
 
@@ -2625,7 +2686,7 @@
             const newEmbeddingProvider = embeddingProviderEl?.value || 'local';
             const newEmbeddingContextLength = parseInt(document.getElementById(`embeddingContextLength-${profileId}`)?.value) || 8192;
             const newSyncSource = syncSourceEl?.value || 'local';
-            const newDriveFolderId = extractDriveFolderId(driveFolderEl?.value || '');
+            const newDriveFolderId = driveFolderEl?.dataset?.folderId || '';
 
             // Only send fields that actually changed to avoid triggering unnecessary worker restarts
             const updates = {};
@@ -2638,7 +2699,10 @@
             if (newEmbeddingProvider !== profile.embeddingProvider) updates.embeddingProvider = newEmbeddingProvider;
             if (newEmbeddingContextLength !== profile.embeddingContextLength) updates.embeddingContextLength = newEmbeddingContextLength;
             if (newSyncSource !== profile.syncSource) updates.syncSource = newSyncSource;
-            if (newDriveFolderId !== (profile.driveFolderId || '')) updates.driveFolderId = newDriveFolderId;
+            if (newDriveFolderId !== (profile.driveFolderId || '')) {
+                updates.driveFolderId = newDriveFolderId;
+                updates.driveFolderName = driveFolderEl?.value || '';
+            }
 
             // Only call API if there are actual changes
             if (Object.keys(updates).length > 0) {
@@ -2795,6 +2859,425 @@
                     updateStats(stats);
                 }
             }
+        }
+
+        let driveBrowserState = {
+            profileId: null,
+            nodes: new Map(),
+            rootId: 'root',
+            query: ''
+        };
+
+        async function openDriveBrowser(profileId) {
+            driveBrowserState = {
+                profileId,
+                nodes: new Map(),
+                rootId: 'root',
+                query: ''
+            };
+            const modal = document.getElementById('driveBrowserModal');
+            const title = document.getElementById('driveBrowserTitle');
+            const body = document.getElementById('driveBrowserBody');
+            if (title) {
+                title.textContent = `☁️ ${t('ui.driveFolderBrowse')}`;
+            }
+            if (body) {
+                body.innerHTML = '<div class="empty-state">Loading...</div>';
+            }
+            modal.classList.add('active');
+            await initDriveTree(profileId);
+
+            const profile = profiles.find(p => p.id === profileId);
+            if (profile?.driveFolderId && profile.driveFolderId !== 'root') {
+                try {
+                    await expandDrivePath(profileId, profile.driveFolderId);
+                } catch (error) {
+                    console.warn('[DriveBrowser] Failed to expand path:', error);
+                }
+            }
+        }
+
+        function closeDriveBrowser() {
+            const modal = document.getElementById('driveBrowserModal');
+            modal.classList.remove('active');
+        }
+
+        function createDriveNode(id, name, parentId, driveId, isSharedRoot) {
+            return {
+                id,
+                name,
+                parentId,
+                driveId: driveId || null,
+                isSharedRoot: !!isSharedRoot,
+                children: [],
+                loaded: false,
+                expanded: false,
+                loading: false,
+                nextPageToken: null
+            };
+        }
+
+        async function initDriveTree(profileId) {
+            const rootNode = createDriveNode('root', t('ui.driveMyDrive'), null, null, false);
+            rootNode.expanded = true;
+            driveBrowserState.nodes.set('root', rootNode);
+            const sharedRoot = createDriveNode('shared-drives', t('ui.driveSharedDrives'), 'root', null, true);
+            driveBrowserState.nodes.set('shared-drives', sharedRoot);
+            rootNode.children.push('shared-drives');
+            await loadDriveChildren('root');
+        }
+
+        async function loadDriveChildren(nodeId, append = false) {
+            const node = driveBrowserState.nodes.get(nodeId);
+            if (!node || node.loading) return;
+            const profileId = driveBrowserState.profileId;
+            if (!profileId) return;
+
+            node.loading = true;
+            renderDriveTree();
+
+            if (node.isSharedRoot) {
+                const response = await window.api.listDriveSharedDrives(profileId, driveBrowserState.query || null, append ? node.nextPageToken : undefined);
+                if (!response.success) {
+                    alert('Error: ' + response.error);
+                    node.loading = false;
+                    return;
+                }
+
+                node.nextPageToken = response.nextPageToken;
+                const drives = response.drives || [];
+                if (!append) {
+                    node.children = [];
+                }
+
+                for (const driveItem of drives) {
+                    if (!driveBrowserState.nodes.has(driveItem.id)) {
+                        driveBrowserState.nodes.set(driveItem.id, createDriveNode(driveItem.id, driveItem.name, 'shared-drives', driveItem.id, false));
+                    }
+                    if (!node.children.includes(driveItem.id)) {
+                        node.children.push(driveItem.id);
+                    }
+                }
+
+                node.loaded = true;
+                node.loading = false;
+                renderDriveTree();
+                return;
+            }
+
+            const parentId = nodeId === 'root' ? null : nodeId;
+            const query = nodeId === 'root' ? driveBrowserState.query || null : null;
+            const response = node.driveId
+                ? await window.api.listDriveFoldersWithDrive(profileId, parentId, query, append ? node.nextPageToken : undefined, node.driveId)
+                : await window.api.listDriveFolders(profileId, parentId, query, append ? node.nextPageToken : undefined);
+            if (!response.success) {
+                alert('Error: ' + response.error);
+                node.loading = false;
+                return;
+            }
+
+            node.nextPageToken = response.nextPageToken;
+            const folders = response.folders || [];
+            if (!append) {
+                node.children = [];
+            }
+
+            for (const folder of folders) {
+                if (!driveBrowserState.nodes.has(folder.id)) {
+                    driveBrowserState.nodes.set(folder.id, createDriveNode(folder.id, folder.name, nodeId, node.driveId, false));
+                }
+                if (!node.children.includes(folder.id)) {
+                    node.children.push(folder.id);
+                }
+            }
+
+            node.loaded = true;
+            node.loading = false;
+            renderDriveTree();
+        }
+
+        async function ensureDriveChildLoaded(parentId, childId) {
+            let parentNode = driveBrowserState.nodes.get(parentId);
+            if (!parentNode) return false;
+
+            if (!parentNode.loaded) {
+                await loadDriveChildren(parentId);
+                parentNode = driveBrowserState.nodes.get(parentId);
+            }
+
+            while (parentNode && !parentNode.children.includes(childId) && parentNode.nextPageToken) {
+                await loadDriveChildren(parentId, true);
+                parentNode = driveBrowserState.nodes.get(parentId);
+            }
+
+            return parentNode ? parentNode.children.includes(childId) : false;
+        }
+
+        async function expandDrivePath(profileId, folderId) {
+            const response = await window.api.getDriveFolderPath(profileId, folderId);
+            if (!response.success) {
+                console.warn('[DriveBrowser] Failed to resolve folder path:', response.error);
+                return;
+            }
+
+            const path = response.path || [];
+            const driveId = response.driveId || null;
+            const driveName = response.driveName || null;
+
+            console.log('[DriveBrowser] Resolved path', { folderId, driveId, driveName, path });
+
+            const normalizedPath = [...path];
+            if (driveId && normalizedPath[0]?.id === driveId) {
+                normalizedPath.shift();
+            }
+            if (!driveId && normalizedPath.length > 0) {
+                normalizedPath.shift();
+            }
+
+            if (driveId) {
+                const sharedRoot = driveBrowserState.nodes.get('shared-drives');
+                if (sharedRoot) {
+                    sharedRoot.expanded = true;
+                    if (!sharedRoot.loaded) {
+                        await loadDriveChildren('shared-drives');
+                    }
+                }
+
+                if (!driveBrowserState.nodes.has(driveId) && driveName) {
+                    driveBrowserState.nodes.set(driveId, createDriveNode(driveId, driveName, 'shared-drives', driveId, false));
+                    if (sharedRoot && !sharedRoot.children.includes(driveId)) {
+                        sharedRoot.children.push(driveId);
+                    }
+                }
+
+                const driveNode = driveBrowserState.nodes.get(driveId);
+                if (driveNode) {
+                    driveNode.expanded = true;
+                    if (!driveNode.loaded) {
+                        await loadDriveChildren(driveId);
+                    }
+                }
+            }
+
+            let parentId = driveId || 'root';
+            for (const segment of normalizedPath) {
+                await ensureDriveChildLoaded(parentId, segment.id);
+                const node = driveBrowserState.nodes.get(segment.id);
+                if (node) {
+                    node.expanded = true;
+                    if (!node.loaded) {
+                        await loadDriveChildren(node.id);
+                    }
+                    parentId = node.id;
+                } else {
+                    console.warn('[DriveBrowser] Path segment missing in tree:', segment);
+                    break;
+                }
+            }
+
+            renderDriveTree();
+        }
+
+        function renderDriveTree() {
+            const body = document.getElementById('driveBrowserBody');
+            if (!body) return;
+
+            const toolbar = `
+                <div class="drive-browser-toolbar">
+                    <input type="text" id="driveFolderSearch" placeholder="${t('ui.driveFolderSearch')}" value="${escapeHtml(driveBrowserState.query || '')}" style="flex: 1; padding: 8px 10px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 13px;">
+                    <button class="btn-secondary" id="driveFolderSearchBtn">${t('ui.driveSearch')}</button>
+                </div>
+            `;
+
+            const treeHtml = renderDriveNode('root');
+            body.innerHTML = `${toolbar}<ul class="tree">${treeHtml}</ul>`;
+
+            const searchBtn = document.getElementById('driveFolderSearchBtn');
+            const searchInput = document.getElementById('driveFolderSearch');
+            if (searchBtn && searchInput) {
+                searchBtn.onclick = () => {
+                    driveBrowserState.query = searchInput.value.trim();
+                    const rootNode = driveBrowserState.nodes.get('root');
+                    if (rootNode) {
+                        rootNode.loaded = false;
+                        rootNode.children = [];
+                        rootNode.nextPageToken = null;
+                    }
+                    loadDriveChildren('root');
+                };
+                searchInput.onkeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        searchBtn.click();
+                    }
+                };
+            }
+        }
+
+        function buildDrivePath(nodeId) {
+            const parts = [];
+            let currentId = nodeId;
+            while (currentId) {
+                const node = driveBrowserState.nodes.get(currentId);
+                if (!node) break;
+                if (node.id === 'root') {
+                    parts.push(t('ui.driveMyDrive'));
+                    break;
+                }
+                if (node.id === 'shared-drives') {
+                    parts.push(t('ui.driveSharedDrives'));
+                    break;
+                }
+                parts.push(node.name);
+                currentId = node.parentId;
+            }
+            return parts.reverse().join(' / ');
+        }
+
+        function renderDriveNode(nodeId) {
+            const node = driveBrowserState.nodes.get(nodeId);
+            if (!node) return '';
+
+            const isExpanded = node.expanded;
+            const hasToggle = nodeId === 'root' || node.loading || !node.loaded || node.children.length > 0;
+            const toggle = hasToggle ? (isExpanded ? '▼' : '▶') : '';
+            const countLabel = nodeId === 'root' ? '' : '';
+            const loadingMarkup = node.loading ? `<div class="info">${t('ui.loading')}</div>` : '';
+            const loadMoreMarkup = node.nextPageToken
+                ? `<button class="btn-secondary" style="width: 100%;" data-action="load-more" data-node-id="${nodeId}">${t('ui.driveFolderLoadMore')}</button>`
+                : '';
+
+            let childrenHtml = '';
+            if (isExpanded && node.children.length > 0) {
+                childrenHtml = node.children.map(childId => renderDriveNode(childId)).join('');
+            }
+
+            const childWrapperClass = isExpanded ? 'tree-children expanded' : 'tree-children';
+
+            return `
+                <li class="tree-item">
+                    <div class="tree-node" data-node-id="${nodeId}">
+                        <span class="tree-toggle">${toggle}</span>
+                        <span class="tree-icon">${node.isSharedRoot ? '🧩' : '📁'}</span>
+                        <span class="tree-label">${escapeHtml(node.name)}</span>
+                        ${countLabel ? `<span class="tree-count">${countLabel}</span>` : ''}
+                        <div class="drive-folder-actions">
+                            <button class="btn-primary" data-action="select" data-node-id="${nodeId}">${t('ui.driveFolderSelect')}</button>
+                        </div>
+                    </div>
+                    <ul class="${childWrapperClass}" data-node-id="${nodeId}">
+                        ${loadingMarkup}
+                        ${childrenHtml}
+                        ${loadMoreMarkup}
+                    </ul>
+                </li>
+            `;
+        }
+
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLElement)) return;
+
+            const nodeEl = target.closest('.tree-node');
+            const action = target.getAttribute('data-action');
+            const nodeId = target.getAttribute('data-node-id') || nodeEl?.getAttribute('data-node-id');
+            if (!nodeId || !driveBrowserState.nodes.has(nodeId)) return;
+
+            if (action === 'select') {
+                const node = driveBrowserState.nodes.get(nodeId);
+                if (node) {
+                    const fullPath = buildDrivePath(nodeId);
+                    applyDriveFolderSelection(node.id, fullPath);
+                }
+                return;
+            }
+
+            if (action === 'load-more') {
+                loadDriveChildren(nodeId, true);
+                return;
+            }
+
+            if (nodeEl && target.closest('.drive-folder-actions')) {
+                return;
+            }
+
+            if (nodeEl) {
+                const node = driveBrowserState.nodes.get(nodeId);
+                if (!node) return;
+                node.expanded = !node.expanded;
+                if (node.expanded && !node.loaded) {
+                    loadDriveChildren(nodeId);
+                } else {
+                    renderDriveTree();
+                }
+            }
+        });
+
+        async function applyDriveFolderSelection(folderId, folderName) {
+            const profileId = driveBrowserState.profileId;
+            if (!profileId) return;
+            const profile = profiles.find(p => p.id === profileId);
+            if (!profile) return;
+
+            const selectedId = folderId || 'root';
+            const selectedName = folderName || t('ui.driveMyDrive');
+            const selectedDriveId = driveBrowserState.nodes.get(folderId)?.driveId || null;
+
+            if ((profile.driveFolderId || '') !== selectedId) {
+                const stats = profileStats.get(profileId) || { isSyncing: false };
+                let confirmMsg = t('ui.driveFolderChangeWarning');
+                if (stats.isSyncing) {
+                    confirmMsg += '\n\n' + t('ui.syncWillBeStopped');
+                }
+
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+
+                if (stats.isSyncing) {
+                    await window.api.stopWatching(profileId);
+                }
+
+                await window.api.updateProfile(profileId, { driveFolderId: selectedId, driveFolderName: selectedName, driveFolderDriveId: selectedDriveId || '' });
+                profile.driveFolderId = selectedId;
+                profile.driveFolderName = selectedName;
+                profile.driveFolderDriveId = selectedDriveId || '';
+
+                if (profile.databasePath) {
+                    await window.api.clearDatabase(profileId);
+                }
+
+                const resetStats = {
+                    profileId,
+                    isSyncing: false,
+                    trackedFiles: 0,
+                    totalChunks: 0,
+                    totalTokens: 0,
+                    totalCost: 0
+                };
+                updateStats(resetStats);
+
+                const tokensEl = document.getElementById(`totalTokens-${profileId}`);
+                const costEl = document.getElementById(`totalCost-${profileId}`);
+                if (tokensEl) tokensEl.textContent = '0';
+                if (costEl) costEl.textContent = '$0.0000';
+            } else {
+                await window.api.updateProfile(profileId, { driveFolderId: selectedId, driveFolderName: selectedName, driveFolderDriveId: selectedDriveId || '' });
+                profile.driveFolderId = selectedId;
+                profile.driveFolderName = selectedName;
+                profile.driveFolderDriveId = selectedDriveId || '';
+            }
+
+            const input = document.getElementById(`driveFolder-${profileId}`);
+            if (input) {
+                input.value = selectedName;
+                input.dataset.folderId = selectedId;
+            }
+            const selectedEl = document.getElementById(`driveFolderSelected-${profileId}`);
+            if (selectedEl) {
+                selectedEl.textContent = selectedName ? t('ui.driveFolderSelected', { name: selectedName }) : t('ui.driveFolderHelp');
+            }
+            closeDriveBrowser();
         }
 
         function updateOverallStatus() {
@@ -4656,7 +5139,10 @@
             }
             
             // Use the configured watched folder as base path
-            const basePath = profile?.watchedFolder || findCommonBasePath(files.map(f => f.path));
+            const displayPaths = files.map(f => f.displayPath || f.path);
+            const basePath = profile?.syncSource === 'drive'
+                ? findCommonBasePath(displayPaths)
+                : (profile?.watchedFolder || findCommonBasePath(displayPaths));
             
             // Build tree structure relative to base path
             const tree = buildFileTree(files, basePath);
@@ -4697,7 +5183,8 @@
             const baseDepth = basePath.split('/').filter(p => p).length;
             
             for (const file of files) {
-                const parts = file.path.split('/').filter(p => p);
+                const displayPath = file.displayPath || file.path;
+                const parts = displayPath.split('/').filter(p => p);
                 // Skip the common base path parts
                 const relativeParts = parts.slice(baseDepth);
                 
@@ -4717,6 +5204,7 @@
                 current.files.push({
                     name: relativeParts[relativeParts.length - 1],
                     path: file.path,
+                    displayPath,
                     chunkCount: file.chunkCount
                 });
                 root.totalChunks += file.chunkCount;
@@ -4760,7 +5248,10 @@
             // Render files
             for (const file of files) {
                 // Use base64 encoding for safe handling of special characters in paths
-                const encodedPath = btoa(encodeURIComponent(file.path));
+                const encodedPath = btoa(encodeURIComponent(JSON.stringify({
+                    path: file.path,
+                    displayPath: file.displayPath || file.path
+                })));
                 html += `
                     <li class="tree-item">
                         <div class="tree-node file" onclick="showChunksEncoded('${encodedPath}')">
@@ -4802,12 +5293,20 @@
         }
 
         function showChunksEncoded(encodedPath) {
-            // Decode base64 + URI encoded path
-            const filePath = decodeURIComponent(atob(encodedPath));
-            showChunks(filePath);
+            const decoded = decodeURIComponent(atob(encodedPath));
+            let filePath = decoded;
+            let displayPath = decoded;
+            try {
+                const parsed = JSON.parse(decoded);
+                filePath = parsed.path;
+                displayPath = parsed.displayPath || parsed.path;
+            } catch {
+                // Fallback for legacy encoded paths
+            }
+            showChunks(filePath, displayPath);
         }
 
-        async function showChunks(filePath) {
+        async function showChunks(filePath, displayPath) {
             const body = document.getElementById('modalBody');
             const profileId = browserProfileId || activeProfileId;
             
@@ -4817,8 +5316,8 @@
             
             currentView = 'chunks';
             selectedFilePath = filePath;
-            const fileName = filePath.split('/').pop();
-            document.getElementById('modalTitle').textContent = `📄 ${fileName}`;
+            const displayName = (displayPath || filePath).split('/').pop();
+            document.getElementById('modalTitle').textContent = `📄 ${displayName}`;
             
             const chunks = await window.api.getChunks(profileId, filePath);
             
