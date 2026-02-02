@@ -1210,8 +1210,13 @@ function setupIpcHandlers() {
         const state = profileStates.get(profileId);
         
         // If state exists and database is initialized, use it
+        const isUrl = /^https?:\/\//i.test(filePath);
+        const normalizedPath = filePath.replace(/^file:\/\//, '');
+
         if (state?.database) {
-            return state.database.getChunksForFile(filePath);
+            return isUrl
+                ? state.database.getChunksForUrl(filePath)
+                : state.database.getChunksForFile(normalizedPath);
         }
         
         // Otherwise, try to open database directly from profile's databasePath
@@ -1225,7 +1230,9 @@ function setupIpcHandlers() {
         try {
             const embeddingDimension = getEmbeddingDimension(migrateEmbeddingProvider(profile.embeddingProvider));
             const db = new DatabaseManager(profile.databasePath, embeddingDimension);
-            const chunks = db.getChunksForFile(filePath);
+            const chunks = isUrl
+                ? db.getChunksForUrl(filePath)
+                : db.getChunksForFile(normalizedPath);
             db.close();
             return chunks;
         } catch (error) {
@@ -1970,6 +1977,15 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                     state.filesProcessed++;
                     sendStats(profileId);
                     await new Promise(resolve => setImmediate(resolve));
+                }
+
+                if (!syncCancelled.get(profileId)) {
+                    const hasCoords = state.database ? state.database.getChunkCoordsCount() > 0 : false;
+                    const hasChunks = state.database ? state.database.getTotalChunksCount() > 0 : false;
+                    if (state.mapProjectionPending || (hasChunks && !hasCoords)) {
+                        state.mapProjectionPending = false;
+                        await runMapProjection(profileId, 'initial-sync');
+                    }
                 }
 
                 if (!syncCancelled.get(profileId)) {

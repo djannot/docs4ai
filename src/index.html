@@ -4218,7 +4218,7 @@
             const previewMeta = document.getElementById('mapPreviewMeta');
             const previewContent = document.getElementById('mapPreviewContent');
             if (!previewMeta || !previewContent) return;
-            const fileLabel = getChunkFileLabel(node.url);
+            const fileLabel = getChunkFileLabel(node.displayPath || node.url);
             const headingLabel = node.heading_hierarchy || node.section || '';
             previewMeta.textContent = `${fileLabel} · ${t('map.previewChunk', { index: node.chunk_index + 1, total: node.total_chunks })}` + (headingLabel ? ` · ${headingLabel}` : '');
             previewContent.textContent = t('map.previewLoading');

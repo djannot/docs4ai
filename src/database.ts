@@ -377,6 +377,10 @@ export class DatabaseManager {
     getChunksForFile(filePath: string): { chunkId: string; content: string; section: string; chunkIndex: number }[] {
         const sourceUrl = this.getSourceUrlForPath(filePath);
         const url = sourceUrl || `file://${filePath}`;
+        return this.getChunksForUrl(url);
+    }
+
+    getChunksForUrl(url: string): { chunkId: string; content: string; section: string; chunkIndex: number }[] {
         const stmt = this.db.prepare(`
             SELECT chunk_id, content, section, chunk_index 
             FROM vec_items 
