@@ -71,6 +71,7 @@
     "electron-store": "^8.2.0",
     "express": "^4.21.0",
     "force-graph": "^1.48.0",
+    "googleapis": "^133.0.0",
     "i18next": "^25.7.4",
     "i18next-fs-backend": "^2.6.1",
     "node-llama-cpp": "^3.15.0",

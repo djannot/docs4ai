@@ -173,6 +173,20 @@
     "loadingModel": "मॉडल लोड हो रहा है...",
     "downloading": "डाउनलोड हो रहा है",
     "downloaded": "डाउनलोड हो गया",
-    "syncProgress": "सिंक प्रगति"
+    "syncProgress": "सिंक प्रगति",
+    "syncSource": "सिंक स्रोत",
+    "syncSourceLabel": "से इंडेक्स करें",
+    "syncSourceLocal": "लोकल फ़ोल्डर",
+    "syncSourceDrive": "Google Drive फ़ोल्डर",
+    "googleDrive": "Google Drive",
+    "driveConnect": "कनेक्ट करें",
+    "driveReconnect": "पुनः कनेक्ट करें",
+    "driveDisconnect": "डिस्कनेक्ट करें",
+    "driveConnectedAs": "इस रूप में कनेक्ट: {{email}}",
+    "driveNotConnected": "कनेक्ट नहीं है",
+    "driveUnknownAccount": "अज्ञात खाता",
+    "driveFolderId": "Drive फ़ोल्डर ID या URL",
+    "driveFolderPlaceholder": "Google Drive फ़ोल्डर लिंक या ID पेस्ट करें",
+    "driveFolderHelp": "इंडेक्स करने के लिए Drive फ़ोल्डर चुनें। प्रति प्रोफ़ाइल केवल एक स्रोत।"
   }
 }

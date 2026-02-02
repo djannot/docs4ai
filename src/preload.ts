@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('api', {
     setActiveProfile: (profileId: string) => ipcRenderer.invoke('set-active-profile', profileId),
     selectFolder: () => ipcRenderer.invoke('select-folder'),
     selectDatabase: () => ipcRenderer.invoke('select-database'),
+    startDriveAuth: (profileId: string) => ipcRenderer.invoke('start-drive-auth', profileId),
+    disconnectDrive: (profileId: string) => ipcRenderer.invoke('disconnect-drive', profileId),
     getStats: (profileId: string) => ipcRenderer.invoke('get-stats', profileId),
     getFiles: (profileId: string) => ipcRenderer.invoke('get-files', profileId),
     getChunks: (profileId: string, filePath: string) => ipcRenderer.invoke('get-chunks', profileId, filePath),

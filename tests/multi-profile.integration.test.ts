@@ -315,7 +315,7 @@ Key metrics to track:
       });
 
       // Get initial files and process them
-      const files = profile1Syncer.getSyncedFiles();
+      const files = await profile1Syncer.getSyncedFiles();
       for (const filePath of files) {
         const content = await profile1Processor!.readFile(filePath);
         if (!content) continue;
@@ -391,7 +391,7 @@ Key metrics to track:
         },
       });
 
-      const files = profile2Syncer.getSyncedFiles();
+      const files = await profile2Syncer.getSyncedFiles();
       for (const filePath of files) {
         const content = await profile2Processor!.readFile(filePath);
         if (!content) continue;

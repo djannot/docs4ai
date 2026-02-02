@@ -1749,7 +1749,13 @@
         // Load profiles on startup
         async function loadProfiles() {
             const data = await window.api.getProfiles();
-            profiles = data.profiles || [];
+            profiles = (data.profiles || []).map(profile => ({
+                ...profile,
+                syncSource: profile.syncSource || 'local',
+                driveFolderId: profile.driveFolderId || '',
+                driveAccountEmail: profile.driveAccountEmail || '',
+                driveRefreshToken: profile.driveRefreshToken || ''
+            }));
             activeProfileId = data.activeProfileId;
             
             // If no profiles exist, create a default one
@@ -2002,7 +2008,8 @@
                         { ext: '.docx', label: 'Word' },
                         { ext: '.odt', label: 'OpenDocument' },
                         { ext: '.rtf', label: 'Rich Text' },
-                        { ext: '.pptx', label: 'PowerPoint' }
+                        { ext: '.pptx', label: 'PowerPoint' },
+                        { ext: '.csv', label: 'CSV' }
                     ]
                 },
                 {
@@ -2107,6 +2114,8 @@
             }
             
             const stats = profileStats.get(profile.id) || { isSyncing: false, trackedFiles: 0, totalChunks: 0 };
+            const syncSource = profile.syncSource || 'local';
+            const driveConnected = !!profile.driveRefreshToken;
             
             container.innerHTML = `
                 <div class="profile-content active" data-profile-id="${profile.id}">
@@ -2118,10 +2127,37 @@
                     </div>
 
                     <div class="card">
+                        <div class="card-title">🔌 ${t('ui.syncSource')}</div>
+                        <div class="input-group">
+                            <label for="syncSource-${profile.id}">${t('ui.syncSourceLabel')}</label>
+                            <select id="syncSource-${profile.id}" style="width: 100%; padding: 10px 12px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; background: white;">
+                                <option value="local" ${syncSource === 'local' ? 'selected' : ''}>${t('ui.syncSourceLocal')}</option>
+                                <option value="drive" ${syncSource === 'drive' ? 'selected' : ''}>${t('ui.syncSourceDrive')}</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="card" id="localFolderCard-${profile.id}" style="display: ${syncSource === 'local' ? 'block' : 'none'};">
                         <div class="card-title">📁 ${t('profile.watchedFolder')}</div>
                         <div class="input-row">
                             <div class="path-display ${profile.watchedFolder ? 'has-value' : ''}" id="folderPath-${profile.id}">${profile.watchedFolder || t('ui.noFolderSelected')}</div>
                             <button class="btn-secondary" id="selectFolderBtn-${profile.id}">${t('profile.selectFolder')}</button>
+                        </div>
+                    </div>
+
+                    <div class="card" id="driveCard-${profile.id}" style="display: ${syncSource === 'drive' ? 'block' : 'none'};">
+                        <div class="card-title">☁️ ${t('ui.googleDrive')}</div>
+                        <div class="input-group">
+                            <div class="input-row">
+                                <div class="path-display ${driveConnected ? 'has-value' : ''}" id="driveStatus-${profile.id}">${driveConnected ? t('ui.driveConnectedAs', { email: escapeHtml(profile.driveAccountEmail || t('ui.driveUnknownAccount')) }) : t('ui.driveNotConnected')}</div>
+                                <button class="btn-secondary" id="driveConnectBtn-${profile.id}">${driveConnected ? t('ui.driveReconnect') : t('ui.driveConnect')}</button>
+                                <button class="btn-secondary" id="driveDisconnectBtn-${profile.id}" style="display: ${driveConnected ? 'inline-block' : 'none'};">${t('ui.driveDisconnect')}</button>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="driveFolder-${profile.id}">${t('ui.driveFolderId')}</label>
+                            <input type="text" id="driveFolder-${profile.id}" value="${escapeHtml(profile.driveFolderId || '')}" placeholder="${t('ui.driveFolderPlaceholder')}">
+                            <div class="info">${t('ui.driveFolderHelp')}</div>
                         </div>
                     </div>
 
@@ -2245,6 +2281,27 @@
             }
         }
 
+        function extractDriveFolderId(input) {
+            if (!input) return '';
+            const trimmed = input.trim();
+            const match = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/) || trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            return trimmed;
+        }
+
+        function updateSyncSourceUi(profileId, syncSource) {
+            const localCard = document.getElementById(`localFolderCard-${profileId}`);
+            const driveCard = document.getElementById(`driveCard-${profileId}`);
+            if (localCard) {
+                localCard.style.display = syncSource === 'local' ? 'block' : 'none';
+            }
+            if (driveCard) {
+                driveCard.style.display = syncSource === 'drive' ? 'block' : 'none';
+            }
+        }
+
         function setupProfileListeners(profileId) {
             const profileNameInput = document.getElementById(`profileName-${profileId}`);
             const apiKeyInput = document.getElementById(`apiKey-${profileId}`);
@@ -2254,6 +2311,10 @@
             const browseDbBtn = document.getElementById(`browseDbBtn-${profileId}`);
             const startBtn = document.getElementById(`startBtn-${profileId}`);
             const embeddingProviderSelect = document.getElementById(`embeddingProvider-${profileId}`);
+            const syncSourceSelect = document.getElementById(`syncSource-${profileId}`);
+            const driveConnectBtn = document.getElementById(`driveConnectBtn-${profileId}`);
+            const driveDisconnectBtn = document.getElementById(`driveDisconnectBtn-${profileId}`);
+            const driveFolderInput = document.getElementById(`driveFolder-${profileId}`);
             
             if (profileNameInput) {
                 // Save on blur (when user finishes editing)
@@ -2294,6 +2355,96 @@
                     }
                     updateApiKeyWarning(profileId);
                     saveProfileSettings(profileId);
+                });
+            }
+
+            if (syncSourceSelect) {
+                syncSourceSelect.addEventListener('change', async () => {
+                    const newSource = syncSourceSelect.value;
+                    const profile = profiles.find(p => p.id === profileId);
+                    if (!profile || newSource === profile.syncSource) return;
+
+                    const stats = profileStats.get(profileId) || { isSyncing: false };
+                    if (stats.isSyncing) {
+                        await window.api.stopWatching(profileId);
+                        profileStats.set(profileId, { ...stats, isSyncing: false });
+                        updateOverallStatus();
+                    }
+
+                    await window.api.updateProfile(profileId, { syncSource: newSource });
+                    profile.syncSource = newSource;
+                    updateSyncSourceUi(profileId, newSource);
+                    renderTabs();
+                });
+            }
+
+            if (driveConnectBtn) {
+                driveConnectBtn.addEventListener('click', async () => {
+                    driveConnectBtn.disabled = true;
+                    try {
+                        const result = await window.api.startDriveAuth(profileId);
+                        if (!result.success) {
+                            alert('Error: ' + result.error);
+                            return;
+                        }
+                        const updated = await window.api.getProfileSettings(profileId);
+                        if (updated) {
+                            const profile = profiles.find(p => p.id === profileId);
+                            if (profile) {
+                                Object.assign(profile, updated);
+                            }
+                        }
+                        renderActiveProfile();
+                    } finally {
+                        driveConnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            if (driveDisconnectBtn) {
+                driveDisconnectBtn.addEventListener('click', async () => {
+                    driveDisconnectBtn.disabled = true;
+                    try {
+                        const result = await window.api.disconnectDrive(profileId);
+                        if (!result.success) {
+                            alert('Error: ' + result.error);
+                            return;
+                        }
+                        const updated = await window.api.getProfileSettings(profileId);
+                        if (updated) {
+                            const profile = profiles.find(p => p.id === profileId);
+                            if (profile) {
+                                Object.assign(profile, updated);
+                            }
+                        }
+                        renderActiveProfile();
+                    } finally {
+                        driveDisconnectBtn.disabled = false;
+                    }
+                });
+            }
+
+            if (driveFolderInput) {
+                driveFolderInput.addEventListener('blur', async () => {
+                    const profile = profiles.find(p => p.id === profileId);
+                    if (!profile) return;
+
+                    const normalized = extractDriveFolderId(driveFolderInput.value);
+                    if (normalized !== driveFolderInput.value) {
+                        driveFolderInput.value = normalized;
+                    }
+
+                    if (normalized !== (profile.driveFolderId || '')) {
+                        await window.api.updateProfile(profileId, { driveFolderId: normalized });
+                        profile.driveFolderId = normalized;
+                    }
+                });
+
+                driveFolderInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        driveFolderInput.blur();
+                    }
                 });
             }
 
@@ -2459,6 +2610,8 @@
             const folderPathEl = document.getElementById(`folderPath-${profileId}`);
             const dbPathEl = document.getElementById(`databasePath-${profileId}`);
             const embeddingProviderEl = document.getElementById(`embeddingProvider-${profileId}`);
+            const syncSourceEl = document.getElementById(`syncSource-${profileId}`);
+            const driveFolderEl = document.getElementById(`driveFolder-${profileId}`);
 
             // Collect selected extensions from checkboxes
             const extensionCheckboxes = document.querySelectorAll(`#extensionsSelector-${profileId} input[type="checkbox"]:checked`);
@@ -2471,6 +2624,8 @@
             const newRecursive = document.getElementById(`recursive-${profileId}`).checked;
             const newEmbeddingProvider = embeddingProviderEl?.value || 'local';
             const newEmbeddingContextLength = parseInt(document.getElementById(`embeddingContextLength-${profileId}`)?.value) || 8192;
+            const newSyncSource = syncSourceEl?.value || 'local';
+            const newDriveFolderId = extractDriveFolderId(driveFolderEl?.value || '');
 
             // Only send fields that actually changed to avoid triggering unnecessary worker restarts
             const updates = {};
@@ -2482,6 +2637,8 @@
             if (newRecursive !== profile.recursive) updates.recursive = newRecursive;
             if (newEmbeddingProvider !== profile.embeddingProvider) updates.embeddingProvider = newEmbeddingProvider;
             if (newEmbeddingContextLength !== profile.embeddingContextLength) updates.embeddingContextLength = newEmbeddingContextLength;
+            if (newSyncSource !== profile.syncSource) updates.syncSource = newSyncSource;
+            if (newDriveFolderId !== (profile.driveFolderId || '')) updates.driveFolderId = newDriveFolderId;
 
             // Only call API if there are actual changes
             if (Object.keys(updates).length > 0) {

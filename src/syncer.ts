@@ -5,9 +5,16 @@ import * as fs from 'fs';
 export interface SyncerOptions {
     recursive: boolean;
     extensions: string[];
-    onFileAdd: (filePath: string) => Promise<void>;
-    onFileChange: (filePath: string) => Promise<void>;
+    onFileAdd: (filePath: string, sourceUrl?: string) => Promise<void>;
+    onFileChange: (filePath: string, sourceUrl?: string) => Promise<void>;
     onFileDelete: (filePath: string) => Promise<void>;
+}
+
+export interface Syncer {
+    readonly isSyncing: boolean;
+    start(): void;
+    stop(): Promise<void>;
+    getSyncedFiles(): Promise<string[]>;
 }
 
 export class FolderSyncer {
@@ -99,7 +106,7 @@ export class FolderSyncer {
         return this.options.extensions.includes(ext);
     }
 
-    getSyncedFiles(): string[] {
+    async getSyncedFiles(): Promise<string[]> {
         const files: string[] = [];
         
         const walkDir = (dir: string) => {

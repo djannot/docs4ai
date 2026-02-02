@@ -173,6 +173,20 @@
     "loadingModel": "جاري تحميل النموذج...",
     "downloading": "جاري التحميل",
     "downloaded": "تم التحميل",
-    "syncProgress": "تقدم المزامنة"
+    "syncProgress": "تقدم المزامنة",
+    "syncSource": "مصدر المزامنة",
+    "syncSourceLabel": "الفهرسة من",
+    "syncSourceLocal": "مجلد محلي",
+    "syncSourceDrive": "مجلد Google Drive",
+    "googleDrive": "Google Drive",
+    "driveConnect": "اتصال",
+    "driveReconnect": "إعادة الاتصال",
+    "driveDisconnect": "قطع الاتصال",
+    "driveConnectedAs": "متصل باسم {{email}}",
+    "driveNotConnected": "غير متصل",
+    "driveUnknownAccount": "حساب غير معروف",
+    "driveFolderId": "معرّف مجلد Drive أو الرابط",
+    "driveFolderPlaceholder": "الصق رابط مجلد Google Drive أو المعرّف",
+    "driveFolderHelp": "اختر مجلد Drive للفهرسة. مصدر واحد فقط لكل ملف تعريف."
   }
 }

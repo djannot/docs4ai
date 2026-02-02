@@ -1,9 +1,13 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
+import * as http from 'http';
 import * as path from 'path';
 import Store from 'electron-store';
+import { google } from 'googleapis';
+import type { drive_v3 } from 'googleapis';
 import { Worker } from 'worker_threads';
-import { FolderSyncer } from './syncer';
+import { DriveSyncer } from './drive-syncer';
+import { FolderSyncer, Syncer } from './syncer';
 import { DatabaseManager } from './database';
 import { ContentProcessor } from './processor';
 import { EmbeddingService, InvalidApiKeyError, EmbeddingProvider, getEmbeddingDimension, LOCAL_MODELS } from './embeddings';
@@ -21,6 +25,129 @@ function migrateEmbeddingProvider(provider: string | undefined): EmbeddingProvid
     return provider as EmbeddingProvider;
 }
 
+interface DriveAuthResult {
+    success: boolean;
+    refreshToken?: string;
+    email?: string;
+    error?: string;
+}
+
+async function startDriveAuthFlow(clientId: string, clientSecret: string): Promise<DriveAuthResult> {
+    return await new Promise((resolve) => {
+        let resolved = false;
+        const finish = (result: DriveAuthResult) => {
+            if (resolved) return;
+            resolved = true;
+            resolve(result);
+        };
+
+        const server = http.createServer(async (req, res) => {
+            const address = server.address();
+            if (!req.url || !address) {
+                res.writeHead(400, { 'Content-Type': 'text/plain' });
+                res.end('Invalid request');
+                return;
+            }
+            const port = typeof address === 'string' ? 0 : address.port;
+            const requestUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+            if (requestUrl.pathname !== '/oauth2callback') {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not found');
+                return;
+            }
+
+            const error = requestUrl.searchParams.get('error');
+            const code = requestUrl.searchParams.get('code');
+            const stateParam = requestUrl.searchParams.get('state');
+
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end('<html><body><h2>Docs4ai</h2><p>Authorization complete. You can close this window.</p></body></html>');
+
+            if (!code || error || stateParam !== authState) {
+                server.close();
+                finish({ success: false, error: error || 'Authorization failed' });
+                return;
+            }
+
+            try {
+                const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+                const { tokens } = await oauth2Client.getToken(code);
+                oauth2Client.setCredentials(tokens);
+
+                let email: string | undefined;
+                try {
+                    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+                    const userInfo = await oauth2.userinfo.get();
+                    email = userInfo.data.email || undefined;
+                } catch (infoError) {
+                    console.warn('Failed to fetch Google user info:', infoError);
+                }
+
+                server.close();
+                finish({
+                    success: true,
+                    refreshToken: tokens.refresh_token || undefined,
+                    email
+                });
+            } catch (authError: any) {
+                server.close();
+                finish({ success: false, error: authError.message || 'Authorization failed' });
+            }
+        });
+
+        const authState = Math.random().toString(36).slice(2);
+        let redirectUri = '';
+
+        server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            if (!address) {
+                finish({ success: false, error: 'Failed to start auth server' });
+                return;
+            }
+            const port = typeof address === 'string' ? 0 : address.port;
+            redirectUri = `http://127.0.0.1:${port}/oauth2callback`;
+
+            const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+            const authUrl = oauth2Client.generateAuthUrl({
+                access_type: 'offline',
+                prompt: 'consent',
+                scope: [
+                    'https://www.googleapis.com/auth/drive.readonly',
+                    'https://www.googleapis.com/auth/userinfo.email'
+                ],
+                state: authState
+            });
+
+            shell.openExternal(authUrl);
+        });
+
+        const timeout = setTimeout(() => {
+            server.close();
+            finish({ success: false, error: 'Authorization timed out' });
+        }, 120000);
+
+        server.on('close', () => {
+            clearTimeout(timeout);
+        });
+    });
+}
+
+function createDriveClient(profile: ProfileSettings): drive_v3.Drive | null {
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+        return null;
+    }
+
+    if (!profile.driveRefreshToken) {
+        return null;
+    }
+
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: profile.driveRefreshToken });
+    return google.drive({ version: 'v3', auth: oauth2Client });
+}
+
 interface ProfileSettings {
     id: string;
     name: string;
@@ -29,6 +156,10 @@ interface ProfileSettings {
     openAIApiKey: string;
     fileExtensions: string;
     recursive: boolean;
+    syncSource?: 'local' | 'drive';
+    driveFolderId?: string;
+    driveAccountEmail?: string;
+    driveRefreshToken?: string;
     mcpServerEnabled: boolean;
     mcpServerPort: number;
     embeddingProvider: EmbeddingProvider;  // 'local' or 'openai'
@@ -47,7 +178,7 @@ interface AppSettings {
 }
 
 interface ProfileState {
-    syncer: FolderSyncer | null;
+    syncer: Syncer | null;
     database: DatabaseManager | null;
     processor: ContentProcessor | null;
     embeddingService: EmbeddingService | null;
@@ -68,7 +199,7 @@ interface ProfileState {
 }
 
 // Store for persistent settings
-const store = new Store<AppSettings>({
+    const store = new Store<AppSettings>({
     defaults: {
         profiles: [],
         activeProfileId: null,
@@ -433,8 +564,12 @@ function setupIpcHandlers() {
                 watchedFolder: '',
                 databasePath: '',
                 openAIApiKey: '',
-                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx,.pptx,.rtf,.odt',
+                fileExtensions: '.md,.txt,.html,.pdf,.doc,.docx,.pptx,.rtf,.odt,.csv',
                 recursive: true,
+                syncSource: 'local',
+                driveFolderId: '',
+                driveAccountEmail: '',
+                driveRefreshToken: '',
                 mcpServerEnabled: false,
                 mcpServerPort: nextPort,
                 embeddingProvider: 'local',  // Default to local embeddings
@@ -467,14 +602,16 @@ function setupIpcHandlers() {
     });
 
     // Delete a profile
-    ipcMain.handle('delete-profile', (_event: IpcMainInvokeEvent, profileId: string) => {
+    ipcMain.handle('delete-profile', async (_event: IpcMainInvokeEvent, profileId: string) => {
         const appSettings = store.store;
         
         // Stop syncing if this profile is active
         const state = profileStates.get(profileId);
         if (state) {
             syncCancelled.set(profileId, true);
-            state.syncer?.stop();
+            if (state.syncer) {
+                await state.syncer.stop();
+            }
             state.database?.close();
             profileStates.delete(profileId);
             syncCancelled.delete(profileId);
@@ -773,6 +910,61 @@ function setupIpcHandlers() {
         return null;
     });
 
+    ipcMain.handle('start-drive-auth', async (_event: IpcMainInvokeEvent, profileId: string) => {
+        const appSettings = store.store;
+        const profileIndex = appSettings.profiles?.findIndex(p => p.id === profileId);
+        if (profileIndex === undefined || profileIndex === -1) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+        const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+        if (!clientId || !clientSecret) {
+            return { success: false, error: 'Missing Google Drive OAuth credentials (GOOGLE_DRIVE_CLIENT_ID/GOOGLE_DRIVE_CLIENT_SECRET)' };
+        }
+
+        const authResult = await startDriveAuthFlow(clientId, clientSecret);
+        if (!authResult.success) {
+            return authResult;
+        }
+
+        const profile = appSettings.profiles![profileIndex];
+        const refreshToken = authResult.refreshToken || profile.driveRefreshToken;
+        if (!refreshToken) {
+            return { success: false, error: 'No refresh token returned from Google' };
+        }
+
+        appSettings.profiles![profileIndex] = {
+            ...profile,
+            driveRefreshToken: refreshToken,
+            driveAccountEmail: authResult.email || profile.driveAccountEmail
+        };
+        store.store = appSettings;
+
+        return {
+            success: true,
+            email: authResult.email || profile.driveAccountEmail || ''
+        };
+    });
+
+    ipcMain.handle('disconnect-drive', async (_event: IpcMainInvokeEvent, profileId: string) => {
+        const appSettings = store.store;
+        const profileIndex = appSettings.profiles?.findIndex(p => p.id === profileId);
+        if (profileIndex === undefined || profileIndex === -1) {
+            return { success: false, error: 'Profile not found' };
+        }
+
+        const profile = appSettings.profiles![profileIndex];
+        appSettings.profiles![profileIndex] = {
+            ...profile,
+            driveRefreshToken: '',
+            driveAccountEmail: ''
+        };
+        store.store = appSettings;
+
+        return { success: true };
+    });
+
     // Get stats for a specific profile
     ipcMain.handle('get-stats', (_event: IpcMainInvokeEvent, profileId: string) => {
         const appSettings = store.store;
@@ -892,7 +1084,9 @@ function setupIpcHandlers() {
         syncCancelled.set(profileId, true);
         const state = profileStates.get(profileId);
         if (state) {
-            state.syncer?.stop();
+            if (state.syncer) {
+                await state.syncer.stop();
+            }
             state.syncer = null;
             
             // Reset sync progress
@@ -950,7 +1144,7 @@ function setupIpcHandlers() {
             if (state) {
                 // Stop syncer if running
                 if (state.syncer) {
-                    state.syncer.stop();
+                    await state.syncer.stop();
                     state.syncer = null;
                 }
                 // Close and clear database
@@ -1350,9 +1544,10 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
     }
 
     const { watchedFolder, databasePath, openAIApiKey, fileExtensions, recursive } = profile;
+    const syncSource = profile.syncSource || 'local';
     const embeddingProvider = migrateEmbeddingProvider(profile.embeddingProvider);
 
-    if (!watchedFolder) {
+    if (syncSource === 'local' && !watchedFolder) {
         return { success: false, error: 'No folder selected' };
     }
 
@@ -1468,7 +1663,9 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 if (state && state.embeddingService === embeddingService) {
                     await embeddingService.terminate();
                     state.embeddingService = null;
-                    state.syncer?.stop();
+                    if (state.syncer) {
+                        await state.syncer.stop();
+                    }
                     state.syncer = null;
                     // Notify UI about the error
                     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1483,15 +1680,51 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             });
         }
 
-        // Parse extensions
-        const extensions = fileExtensions.split(',').map(e => e.trim()).filter(e => e);
+    // Parse extensions
+    const extensions = fileExtensions.split(',').map(e => e.trim().toLowerCase()).filter(e => e);
 
-        // Stop existing syncer if any
-        if (state.syncer) {
-            state.syncer.stop();
+    // Stop existing syncer if any
+    if (state.syncer) {
+        await state.syncer.stop();
+    }
+
+    if (syncSource === 'drive') {
+        if (!profile.driveFolderId) {
+            return { success: false, error: 'No Google Drive folder selected' };
         }
 
-        // Create syncer
+        if (!profile.driveRefreshToken) {
+            return { success: false, error: 'Google Drive account not connected' };
+        }
+
+        const drive = createDriveClient(profile);
+        if (!drive) {
+            return { success: false, error: 'Google Drive credentials not configured' };
+        }
+
+        const cacheDir = path.join(app.getPath('userData'), 'drive-cache', profileId);
+        state.syncer = new DriveSyncer(drive, profile.driveFolderId, cacheDir, {
+            recursive,
+            extensions,
+            onFileAdd: async (filePath, sourceUrl) => {
+                await processFile(profileId, filePath, false, sourceUrl);
+                sendStats(profileId);
+            },
+            onFileChange: async (filePath, sourceUrl) => {
+                await processFile(profileId, filePath, false, sourceUrl);
+                sendStats(profileId);
+            },
+            onFileDelete: async (filePath) => {
+                state.database?.removeChunksForFile(filePath);
+                state.database?.removeFileInfo(filePath);
+                state.mapProjectionPending = true;
+                if (!state.isInitialSyncing) {
+                    scheduleMapProjection(profileId);
+                }
+                sendStats(profileId);
+            }
+        });
+    } else {
         state.syncer = new FolderSyncer(watchedFolder, {
             recursive,
             extensions,
@@ -1513,20 +1746,69 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
                 sendStats(profileId);
             }
         });
+    }
 
+    // Reset sync cancelled flag
+    syncCancelled.set(profileId, false);
+
+    // Kick off initial scan without blocking UI
+    state.totalFilesToSync = 0;
+    state.filesProcessed = 0;
+    sendStats(profileId);
+
+    if (syncSource === 'drive' && state.syncer instanceof DriveSyncer) {
+        const driveSyncer = state.syncer;
+        driveSyncer.beginSync();
+
+        (async () => {
+            try {
+                state.isInitialSyncing = true;
+                const driveFiles = await driveSyncer.listRemoteFiles();
+                console.log(`[${profile.name}] Sync source: ${syncSource} (${driveFiles.length} files)`);
+                state.totalFilesToSync = driveFiles.length;
+                state.filesProcessed = 0;
+                sendStats(profileId);
+
+                for (const file of driveFiles) {
+                    if (syncCancelled.get(profileId)) {
+                        break;
+                    }
+                    const cached = await driveSyncer.downloadToCache(file);
+                    if (!cached) {
+                        continue;
+                    }
+                    await processFile(profileId, cached.localPath, false, cached.sourceUrl);
+                    state.filesProcessed++;
+                    sendStats(profileId);
+                    await new Promise(resolve => setImmediate(resolve));
+                }
+
+                if (!syncCancelled.get(profileId)) {
+                    state.totalFilesToSync = 0;
+                    state.filesProcessed = 0;
+                    sendStats(profileId);
+                }
+            } catch (error: any) {
+                console.error(`[${profile.name}] Error during initial sync:`, error);
+            } finally {
+                state.isInitialSyncing = false;
+                if (!syncCancelled.get(profileId)) {
+                    driveSyncer.startPolling();
+                }
+                sendStats(profileId);
+                updateTray();
+            }
+        })();
+    } else {
         state.syncer.start();
+        state.syncer.getSyncedFiles().then((initialFiles) => {
+            console.log(`[${profile.name}] Sync source: ${syncSource} (${initialFiles.length} files)`);
+            state.totalFilesToSync = initialFiles.length;
+            state.filesProcessed = 0;
+            sendStats(profileId);
 
-        // Reset sync cancelled flag
-        syncCancelled.set(profileId, false);
-
-        // Calculate total files to sync
-        const totalFiles = state.syncer.getSyncedFiles().length;
-        state.totalFilesToSync = totalFiles;
-        state.filesProcessed = 0;
-        sendStats(profileId); // Send initial progress
-
-        // Start initial sync in background (don't block UI)
-        performInitialSync(profileId).then(() => {
+            return performInitialSync(profileId, false, initialFiles);
+        }).then(() => {
             sendStats(profileId);
             updateTray();
         }).catch((error: any) => {
@@ -1534,11 +1816,12 @@ async function startWatchingInternal(profileId: string): Promise<{ success: bool
             sendStats(profileId);
             updateTray();
         });
+    }
 
-        // Return immediately so UI can show "Stop Sync" button
-        sendStats(profileId);
-        updateTray();
-        return { success: true };
+    // Return immediately so UI can show "Stop Sync" button
+    sendStats(profileId);
+    updateTray();
+    return { success: true };
     } catch (error: any) {
         console.error(`[${profile.name}] Error starting syncer:`, error);
         return { success: false, error: error.message };
@@ -1651,7 +1934,7 @@ async function runMapProjection(profileId: string, reason: string) {
     }
 }
 
-async function processFile(profileId: string, filePath: string, forceReprocess: boolean = false) {
+    async function processFile(profileId: string, filePath: string, forceReprocess: boolean = false, sourceUrl?: string) {
     const state = profileStates.get(profileId);
     if (!state || !state.database || !state.processor) return;
     
@@ -1709,7 +1992,7 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
             }
         }
 
-        const chunks = state.processor.chunkContent(content, filePath);
+        const chunks = state.processor.chunkContent(content, filePath, sourceUrl);
 
         // Remove old chunks
         state.database.removeChunksForFile(filePath);
@@ -1788,7 +2071,7 @@ async function processFile(profileId: string, filePath: string, forceReprocess: 
     }
 }
 
-async function performInitialSync(profileId: string, forceReprocess: boolean = false) {
+async function performInitialSync(profileId: string, forceReprocess: boolean = false, initialFiles?: string[]) {
     const state = profileStates.get(profileId);
     if (!state || !state.syncer || !state.database) return;
 
@@ -1798,7 +2081,7 @@ async function performInitialSync(profileId: string, forceReprocess: boolean = f
     const profile = appSettings.profiles?.find(p => p.id === profileId);
     const profileName = profile?.name || profileId;
 
-    const files = state.syncer.getSyncedFiles();
+    const files = initialFiles || await state.syncer.getSyncedFiles();
     console.log(`[${profileName}] Initial sync: ${files.length} files (force=${forceReprocess})`);
 
     // Update total files to sync if not already set
@@ -2015,10 +2298,10 @@ async function handleInvalidApiKey(profileId: string) {
     syncCancelled.set(profileId, true);
     const state = profileStates.get(profileId);
     if (state) {
-        if (state.syncer) {
-            state.syncer.stop();
-            state.syncer = null;
-        }
+                if (state.syncer) {
+                    await state.syncer.stop();
+                    state.syncer = null;
+                }
         
         // Terminate embedding worker and clear service
         if (state.embeddingService) {
@@ -2126,7 +2409,9 @@ app.on('before-quit', async (event) => {
     // Stop all syncers, close all databases, stop all MCP servers, and terminate LLM services
     for (const [profileId, state] of profileStates.entries()) {
         syncCancelled.set(profileId, true);
-        state.syncer?.stop();
+        if (state.syncer) {
+            await state.syncer.stop();
+        }
 
         if (state.mcpServer?.isRunning()) {
             const port = state.mcpServer.getPort();

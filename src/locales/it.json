@@ -173,6 +173,20 @@
     "loadingModel": "Caricamento modello...",
     "downloading": "Download in corso",
     "downloaded": "Scaricato",
-    "syncProgress": "Progresso sincronizzazione"
+    "syncProgress": "Progresso sincronizzazione",
+    "syncSource": "Origine sincronizzazione",
+    "syncSourceLabel": "Indicizza da",
+    "syncSourceLocal": "Cartella locale",
+    "syncSourceDrive": "Cartella Google Drive",
+    "googleDrive": "Google Drive",
+    "driveConnect": "Connetti",
+    "driveReconnect": "Riconnetti",
+    "driveDisconnect": "Disconnetti",
+    "driveConnectedAs": "Connesso come {{email}}",
+    "driveNotConnected": "Non connesso",
+    "driveUnknownAccount": "Account sconosciuto",
+    "driveFolderId": "ID o URL cartella Drive",
+    "driveFolderPlaceholder": "Incolla il link o l'ID della cartella Google Drive",
+    "driveFolderHelp": "Scegli una cartella Drive da indicizzare. Una sola origine per profilo."
   }
 }

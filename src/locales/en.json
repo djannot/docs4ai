@@ -177,6 +177,20 @@
     "loadingModel": "Loading model...",
     "downloading": "Downloading",
     "downloaded": "Downloaded",
-    "syncProgress": "Sync Progress"
+    "syncProgress": "Sync Progress",
+    "syncSource": "Sync Source",
+    "syncSourceLabel": "Index from",
+    "syncSourceLocal": "Local folder",
+    "syncSourceDrive": "Google Drive folder",
+    "googleDrive": "Google Drive",
+    "driveConnect": "Connect",
+    "driveReconnect": "Reconnect",
+    "driveDisconnect": "Disconnect",
+    "driveConnectedAs": "Connected as {{email}}",
+    "driveNotConnected": "Not connected",
+    "driveUnknownAccount": "Unknown account",
+    "driveFolderId": "Drive folder ID or URL",
+    "driveFolderPlaceholder": "Paste Google Drive folder link or ID",
+    "driveFolderHelp": "Choose a Drive folder to index. Only one source per profile."
   }
 }

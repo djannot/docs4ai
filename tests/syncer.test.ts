@@ -4,7 +4,7 @@ import { FolderSyncer } from '../src/syncer';
 import { createTempDir, waitFor } from './helpers';
 
 describe('FolderSyncer', () => {
-  it('collects files with recursion and extensions', () => {
+  it('collects files with recursion and extensions', async () => {
     const root = createTempDir('syncer-root');
     const nested = path.join(root, 'nested');
     fs.mkdirSync(nested, { recursive: true });
@@ -33,8 +33,8 @@ describe('FolderSyncer', () => {
       onFileDelete: async () => {},
     });
 
-    const nonRecursiveFiles = nonRecursive.getSyncedFiles();
-    const recursiveFiles = recursive.getSyncedFiles();
+    const nonRecursiveFiles = await nonRecursive.getSyncedFiles();
+    const recursiveFiles = await recursive.getSyncedFiles();
 
     expect(nonRecursiveFiles).toEqual([rootFile]);
     expect(recursiveFiles.sort()).toEqual([nestedFile, rootFile].sort());

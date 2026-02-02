@@ -173,6 +173,20 @@
     "loadingModel": "正在加载模型...",
     "downloading": "正在下载",
     "downloaded": "已下载",
-    "syncProgress": "同步进度"
+    "syncProgress": "同步进度",
+    "syncSource": "同步来源",
+    "syncSourceLabel": "索引来源",
+    "syncSourceLocal": "本地文件夹",
+    "syncSourceDrive": "Google Drive 文件夹",
+    "googleDrive": "Google Drive",
+    "driveConnect": "连接",
+    "driveReconnect": "重新连接",
+    "driveDisconnect": "断开连接",
+    "driveConnectedAs": "已连接为 {{email}}",
+    "driveNotConnected": "未连接",
+    "driveUnknownAccount": "未知账户",
+    "driveFolderId": "Drive 文件夹 ID 或 URL",
+    "driveFolderPlaceholder": "粘贴 Google Drive 文件夹链接或 ID",
+    "driveFolderHelp": "选择要索引的 Drive 文件夹。每个配置文件仅限一种来源。"
   }
 }
