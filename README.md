@@ -374,4 +374,6 @@ If downloads fail, try:
 
 ## License
 
-MIT
+Apache License 2.0. See `LICENSE`.
+
+Third-party notices: see `THIRD_PARTY_NOTICES`.
