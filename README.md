@@ -41,7 +41,7 @@ Documents: `.md`, `.txt`, `.pdf`, `.doc`, `.docx`, `.odt`, `.rtf`, `.pptx`, `.cs
 
 Web: `.html`, `.htm` (converted to Markdown)
 
-More details in `DEVELOPERS.md`.
+More details in `DEVELOPERS.md#supported-file-types`.
 
 ## Supported languages
 
@@ -65,6 +65,10 @@ English, French, Spanish, Chinese, Hindi, Arabic, German, Italian, Portuguese.
 | **OpenAI** | Configurable | Cloud | Best quality with cloud models |
 
 More model details in `DEVELOPERS.md`.
+
+## Google Drive sync
+
+Setup steps live in `GOOGLE_DRIVE.md`.
 
 ## Developer guide
 
