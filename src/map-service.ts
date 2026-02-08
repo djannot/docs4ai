@@ -15,6 +15,7 @@ interface VisualizationPoint {
     score: number | null;
     type: 'result' | 'neighbor' | 'map' | 'focus';
     url: string;
+    displayPath: string;
     section: string;
     heading_hierarchy: string;
     chunk_index: number;
@@ -96,9 +97,11 @@ export class MapService {
                 vec_items.total_chunks,
                 vec_items.content,
                 chunk_coords.x,
-                chunk_coords.y
+                chunk_coords.y,
+                files.display_path
             FROM chunk_coords
             JOIN vec_items ON vec_items.chunk_id = chunk_coords.chunk_id
+            LEFT JOIN files ON files.source_url = vec_items.url
             ORDER BY RANDOM()
             LIMIT ?
         `).all(sampleLimit) as Array<any>;
@@ -125,9 +128,11 @@ export class MapService {
                 vec_items.total_chunks,
                 vec_items.content,
                 chunk_coords.x,
-                chunk_coords.y
+                chunk_coords.y,
+                files.display_path
             FROM chunk_coords
             JOIN vec_items ON vec_items.chunk_id = chunk_coords.chunk_id
+            LEFT JOIN files ON files.source_url = vec_items.url
             ORDER BY RANDOM()
             LIMIT ?
         `).all(sampleLimit) as Array<any>;
@@ -241,9 +246,11 @@ export class MapService {
                 vec_items.total_chunks,
                 vec_items.content,
                 chunk_coords.x,
-                chunk_coords.y
+                chunk_coords.y,
+                files.display_path
             FROM vec_items
             LEFT JOIN chunk_coords ON chunk_coords.chunk_id = vec_items.chunk_id
+            LEFT JOIN files ON files.source_url = vec_items.url
             WHERE vec_items.chunk_id IN (${placeholders})
         `).all(...ids) as Array<any>;
 
@@ -275,6 +282,7 @@ export class MapService {
             x: number | null;
             y: number | null;
             url: string;
+            display_path?: string;
             section: string;
             heading_hierarchy: string;
             chunk_index: number;
@@ -291,6 +299,7 @@ export class MapService {
             score,
             type,
             url: row.url,
+            displayPath: row.display_path || row.url,
             section: row.section,
             heading_hierarchy: this.parseHeadingHierarchy(row.heading_hierarchy),
             chunk_index: Number(row.chunk_index),

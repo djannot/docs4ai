@@ -340,7 +340,7 @@ export class ContentProcessor {
         return text.split(/(\s+)/).filter(token => token.length > 0);
     }
 
-    chunkContent(content: string, filePath: string): DocumentChunk[] {
+    chunkContent(content: string, filePath: string, sourceUrl?: string): DocumentChunk[] {
         const chunks: DocumentChunk[] = [];
         const lines = content.split('\n');
         
@@ -375,7 +375,7 @@ export class ContentProcessor {
                 headingHierarchy: hierarchy.filter(h => h),
                 chunkIndex: chunkCounter++,
                 totalChunks: 0,
-                url: `file://${filePath}`,
+                url: sourceUrl || `file://${filePath}`,
                 hash: chunkId
             };
         };

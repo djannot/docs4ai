@@ -5,6 +5,7 @@ A native desktop application that watches a folder and automatically syncs it wi
 ## Features
 
 - **Real-time folder sync** - Monitors for file additions, modifications, and deletions
+- **Google Drive sync** - Index a Drive folder per profile (OAuth, read-only)
 - **Incremental sync** - Only processes changed files based on modification time and content hash
 - **sqlite-vec integration** - Proper vec0 virtual table for vector similarity search
 - **Flexible embeddings** - Choose between local Qwen3 embeddings (free) or OpenAI (paid)
@@ -34,6 +35,7 @@ A native desktop application that watches a folder and automatically syncs it wi
 | `.odt` | officeparser | OpenDocument Text (LibreOffice, Google Docs) |
 | `.rtf` | officeparser | Rich Text Format |
 | `.pptx` | officeparser | PowerPoint presentations |
+| `.csv` | Built-in | CSV files (Google Sheets export) |
 
 ### Web
 | Extension | Library | Notes |
@@ -42,10 +44,37 @@ A native desktop application that watches a folder and automatically syncs it wi
 
 All file parsers are optional dependencies. If not installed, the app provides graceful fallback messages.
 
+Google Docs/Sheets/Slides stored in Drive are exported on demand to supported formats (e.g. Docs → `.docx`/`.pdf`/`.txt`, Sheets → `.csv`, Slides → `.pptx`/`.pdf`).
+
 ## Requirements
 
 - Node.js 18 or later
 - npm
+- Google Drive OAuth client ID/secret (optional, only for Drive sync)
+
+## Install From Source (One-Liners)
+
+These scripts build locally from source and install npm dependencies for you. Replace the repo URL with your fork if needed.
+
+### macOS
+
+```bash
+bash -c 'git clone https://github.com/djannot/docs4ai.git && cd docs4ai && bash scripts/install-macos.sh'
+```
+
+### Linux
+
+```bash
+bash -c 'git clone https://github.com/djannot/docs4ai.git && cd docs4ai && bash scripts/install-linux.sh'
+```
+
+### Windows (PowerShell)
+
+```powershell
+powershell -Command "git clone https://github.com/djannot/docs4ai.git; cd docs4ai; .\scripts\install-windows.ps1"
+```
+
+If npm fails compiling native modules, install Visual Studio Build Tools (Desktop development with C++).
 
 ## Quick Start
 
@@ -92,7 +121,7 @@ npm run package
 
 # Build for specific platform
 npm run package:mac    # macOS: .dmg and .zip
-npm run package:win    # Windows: .exe installer and portable
+npm run package:win:docker  # Windows: .exe installer and portable (Docker)
 npm run package:linux  # Linux: AppImage and .deb
 ```
 
@@ -105,7 +134,9 @@ Built applications are output to the `release/` directory.
 3. **Create/Select Profile** - Use the profile tabs to manage multiple sync configurations
 4. **Configure Profile**:
    - **Name** - Give your profile a descriptive name
-   - **Watch Folder** - Click "Select..." to choose a folder to monitor
+   - **Sync Source** - Choose **Local folder** or **Google Drive folder** (one per profile)
+   - **Watch Folder** - Click "Select..." to choose a folder to monitor (local only)
+   - **Google Drive** - Connect your account and browse to a Drive or Shared Drive folder
    - **Database** - Choose where to save the sqlite-vec database
    - **File Extensions** - Check the boxes for file types you want to process
    - **Recursive** - Enable to watch subdirectories
@@ -115,6 +146,24 @@ Built applications are output to the `release/` directory.
    - **API Key** (OpenAI only) - Enter your OpenAI API key
 5. **Click "Start Syncing"** - The app syncs and monitors for changes
 6. **Monitor Progress** - Track file processing and model downloads in real-time
+
+### Google Drive Sync
+
+To enable Drive sync, set these environment variables before launching the app:
+
+```bash
+export GOOGLE_DRIVE_CLIENT_ID="your-client-id"
+export GOOGLE_DRIVE_CLIENT_SECRET="your-client-secret"
+```
+
+Then in a profile:
+
+1. Select **Google Drive folder** as the sync source.
+2. Click **Connect** to authorize your Google account.
+3. Browse and select a folder (My Drive or Shared Drives).
+4. Start syncing.
+
+Drive content is cached under your app data directory (e.g. `~/Library/Application Support/docs4ai/drive-cache/<profileId>` on macOS). Search results link back to the Drive file.
 
 ### Multi-Profile Support
 
@@ -349,4 +398,6 @@ If downloads fail, try:
 
 ## License
 
-MIT
+Apache License 2.0. See `LICENSE`.
+
+Third-party notices: see `THIRD_PARTY_NOTICES`.

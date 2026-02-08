@@ -140,9 +140,13 @@ export class DatabaseManager {
                 path TEXT PRIMARY KEY,
                 hash TEXT,
                 modified_at TEXT,
-                chunk_count INTEGER
+                chunk_count INTEGER,
+                display_path TEXT,
+                source_url TEXT
             )
         `);
+
+        this.ensureFileColumns();
 
         // Create metadata table to store embedding dimension info
         this.db.exec(`
@@ -252,7 +256,7 @@ export class DatabaseManager {
     }
 
     removeChunksForFile(filePath: string) {
-        const url = `file://${filePath}`;
+        const url = this.getSourceUrlForPath(filePath) || `file://${filePath}`;
         // Get count before delete
         const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM vec_items WHERE url = ?');
         const countRow = countStmt.get(url) as { count: number };
@@ -264,6 +268,29 @@ export class DatabaseManager {
         this.db.prepare('DELETE FROM fts_chunks WHERE url = ?').run(url);
         
         this._totalChunksCount -= deletedCount;
+    }
+
+    private ensureFileColumns() {
+        const columns = this.db.prepare('PRAGMA table_info(files)').all() as { name: string }[];
+        const columnNames = new Set(columns.map(col => col.name));
+
+        if (!columnNames.has('display_path')) {
+            this.db.exec('ALTER TABLE files ADD COLUMN display_path TEXT');
+        }
+
+        if (!columnNames.has('source_url')) {
+            this.db.exec('ALTER TABLE files ADD COLUMN source_url TEXT');
+        }
+    }
+
+    private getSourceUrlForPath(filePath: string): string | null {
+        try {
+            const stmt = this.db.prepare('SELECT source_url FROM files WHERE path = ?');
+            const row = stmt.get(filePath) as { source_url?: string } | undefined;
+            return row?.source_url || null;
+        } catch {
+            return null;
+        }
     }
 
     getExistingChunkHash(chunkId: string): string | null {
@@ -282,16 +309,19 @@ export class DatabaseManager {
         return Number(row.count);
     }
 
-    upsertFileInfo(filePath: string, hash: string, modifiedAt: Date, chunkCount: number) {
+    upsertFileInfo(filePath: string, hash: string, modifiedAt: Date, chunkCount: number, displayPath?: string, sourceUrl?: string) {
         // Check if file already exists
         const checkStmt = this.db.prepare('SELECT 1 FROM files WHERE path = ?');
         const exists = checkStmt.get(filePath);
-        
+
+        const resolvedDisplayPath = displayPath || filePath;
+        const resolvedSourceUrl = sourceUrl || `file://${filePath}`;
+
         const stmt = this.db.prepare(`
-            INSERT OR REPLACE INTO files (path, hash, modified_at, chunk_count)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO files (path, hash, modified_at, chunk_count, display_path, source_url)
+            VALUES (?, ?, ?, ?, ?, ?)
         `);
-        stmt.run(filePath, hash, modifiedAt.toISOString(), chunkCount);
+        stmt.run(filePath, hash, modifiedAt.toISOString(), chunkCount, resolvedDisplayPath, resolvedSourceUrl);
         
         // Only increment if this is a new file
         if (!exists) {
@@ -299,7 +329,7 @@ export class DatabaseManager {
         }
     }
 
-    getFileInfo(filePath: string): { path: string; hash: string; modifiedAt: Date; chunkCount: number } | null {
+    getFileInfo(filePath: string): { path: string; hash: string; modifiedAt: Date; chunkCount: number; displayPath: string; sourceUrl: string } | null {
         const stmt = this.db.prepare('SELECT * FROM files WHERE path = ?');
         const row = stmt.get(filePath) as any;
         if (!row) return null;
@@ -307,7 +337,9 @@ export class DatabaseManager {
             path: row.path,
             hash: row.hash,
             modifiedAt: new Date(row.modified_at),
-            chunkCount: row.chunk_count
+            chunkCount: row.chunk_count,
+            displayPath: row.display_path || row.path,
+            sourceUrl: row.source_url || `file://${row.path}`
         };
     }
 
@@ -330,18 +362,25 @@ export class DatabaseManager {
         return rows.map(r => r.path);
     }
 
-    getAllTrackedFilesWithInfo(): { path: string; chunkCount: number; modifiedAt: string }[] {
-        const stmt = this.db.prepare('SELECT path, chunk_count, modified_at FROM files ORDER BY modified_at DESC');
-        const rows = stmt.all() as { path: string; chunk_count: number; modified_at: string }[];
+    getAllTrackedFilesWithInfo(): { path: string; displayPath: string; sourceUrl: string; chunkCount: number; modifiedAt: string }[] {
+        const stmt = this.db.prepare('SELECT path, display_path, source_url, chunk_count, modified_at FROM files ORDER BY modified_at DESC');
+        const rows = stmt.all() as { path: string; display_path: string | null; source_url: string | null; chunk_count: number; modified_at: string }[];
         return rows.map(r => ({
             path: r.path,
+            displayPath: r.display_path || r.path,
+            sourceUrl: r.source_url || `file://${r.path}`,
             chunkCount: r.chunk_count,
             modifiedAt: r.modified_at
         }));
     }
 
     getChunksForFile(filePath: string): { chunkId: string; content: string; section: string; chunkIndex: number }[] {
-        const url = `file://${filePath}`;
+        const sourceUrl = this.getSourceUrlForPath(filePath);
+        const url = sourceUrl || `file://${filePath}`;
+        return this.getChunksForUrl(url);
+    }
+
+    getChunksForUrl(url: string): { chunkId: string; content: string; section: string; chunkIndex: number }[] {
         const stmt = this.db.prepare(`
             SELECT chunk_id, content, section, chunk_index 
             FROM vec_items 
