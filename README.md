@@ -245,6 +245,21 @@ Docs4ai includes a **Knowledge Map** view that projects all chunks into 2D and h
 - **Click a dot** to center the map and preview the corresponding chunk.
 - **Search** to see the contextual neighborhood around your top results.
 
+## Embedding Models
+
+Docs4ai supports local or OpenAI embeddings for indexing and search:
+
+| Provider | Model | Dimensions | Size | Privacy | Best For |
+|----------|-------|------------|------|---------|----------|
+| **Local Qwen3 Embedding** | Qwen3 Embedding | 1024 | ~639MB | On-device | Private, offline indexing *(Recommended)* |
+| **OpenAI** | text-embedding-3-large | 3072 | Cloud | Remote | Highest quality semantic search |
+
+**Notes:**
+- Local models download on first use and can run offline.
+- OpenAI requires an API key and internet access.
+- Changing embedding providers requires clearing and re-syncing your database (different vector dimensions).
+- For most users: start with local; switch to OpenAI for maximum quality.
+
 ## Chat UI
 
 Docs4ai includes a built-in **Chat UI** for asking questions against your synced documents. It works with both **OpenAI** models and **local Qwen3** models:
@@ -253,6 +268,19 @@ Docs4ai includes a built-in **Chat UI** for asking questions against your synced
 - **Local Qwen3**: runs entirely on your machine for private, offline-capable chat.
 
 Open the chat panel from the main UI and choose your provider in the chat settings.
+
+### Chat LLM Options
+
+| Provider | Model | Size | Privacy | Best For |
+|----------|-------|------|---------|----------|
+| **Local Qwen3** | 1.7B | ~1GB | On-device | Fast, private chat on modest hardware |
+| **Local Qwen3** | 4B | ~2.5GB | On-device | Better answer quality with more local compute |
+| **OpenAI** | Configurable | Cloud | Remote | Best quality with cloud models |
+
+**Notes:**
+- Local models download on first use and can run offline.
+- OpenAI requires an API key and internet access.
+- For most users: start with local 1.7B; upgrade to 4B for better quality.
 
 ## Hybrid Search
 
@@ -325,52 +353,6 @@ The app tracks file states to avoid reprocessing unchanged files:
 - **TypeScript** - Type-safe development
 - **Express** - Built-in MCP server
 - **i18next** - Internationalization framework
-
-## Embedding Models
-
-Docs4ai supports multiple embedding providers:
-
-### Local Models (Free, Private, Offline-capable)
-
-| Model | Dimensions | Size | Speed | Quality | Best For |
-|-------|------------|------|-------|---------|----------|
-| **Qwen3 Embedding** | 1024 | ~639MB | Medium | Best | Production use, highest quality *(Recommended)* |
-
-**Advantages:**
-- 100% private - data never leaves your machine
-- No API costs
-- Works offline after initial model download
-- Consistent performance
-
-**Disadvantages:**
-- Lower quality than OpenAI (especially for complex queries)
-- Requires disk space for models (~23MB to 1.1GB per model)
-- First-time model download required
-
-### OpenAI (Paid, Cloud-based)
-
-| Model | Dimensions | Cost | Quality |
-|-------|------------|------|---------|
-| **text-embedding-3-large** | 3072 | $0.13/1M tokens | Highest |
-
-**Advantages:**
-- Best embedding quality
-- No local storage needed
-- Always up-to-date
-
-**Disadvantages:**
-- Requires API key and costs money
-- Data sent to OpenAI
-- Requires internet connection
-- Rate limits apply
-
-### Choosing an Embedding Provider
-
-- **For most users**: Start with **Local Qwen3 Embedding** (free, good quality)
-- **For maximum quality**: Use **OpenAI** (paid, best results)
-- **For limited resources**: Use **OpenAI** if local storage is constrained
-
-**Important**: Changing embedding providers requires clearing and re-syncing your database, as different models produce incompatible vector dimensions.
 
 ## Troubleshooting
 
