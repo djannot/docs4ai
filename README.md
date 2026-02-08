@@ -52,6 +52,30 @@ Google Docs/Sheets/Slides stored in Drive are exported on demand to supported fo
 - npm
 - Google Drive OAuth client ID/secret (optional, only for Drive sync)
 
+## Install From Source (One-Liners)
+
+These scripts build locally from source and install npm dependencies for you. Replace the repo URL with your fork if needed.
+
+### macOS
+
+```bash
+bash -c 'git clone https://github.com/djannot/docs4ai.git && cd docs4ai && bash scripts/install-macos.sh'
+```
+
+### Linux
+
+```bash
+bash -c 'git clone https://github.com/djannot/docs4ai.git && cd docs4ai && bash scripts/install-linux.sh'
+```
+
+### Windows (PowerShell)
+
+```powershell
+powershell -Command "git clone https://github.com/djannot/docs4ai.git; cd docs4ai; .\scripts\install-windows.ps1"
+```
+
+If npm fails compiling native modules, install Visual Studio Build Tools (Desktop development with C++).
+
 ## Quick Start
 
 ```bash
@@ -97,7 +121,7 @@ npm run package
 
 # Build for specific platform
 npm run package:mac    # macOS: .dmg and .zip
-npm run package:win    # Windows: .exe installer and portable
+npm run package:win:docker  # Windows: .exe installer and portable (Docker)
 npm run package:linux  # Linux: AppImage and .deb
 ```
 
