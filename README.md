@@ -1,6 +1,8 @@
 # Docs4ai - Local-First AI for Your Documents
 
-<img src="assets/icon.png" alt="Docs4ai icon" width="180" />
+<p align="center">
+  <img src="assets/icon.png" alt="Docs4ai icon" width="50%" />
+</p>
 
 Search, chat, and map your documents with AI, with the option to run entirely on-device using local embeddings and a local LLM. Docs4ai syncs folders (and Google Drive) into a sqlite-vec index so you can query privately across **macOS, Windows, and Linux**.
 
