@@ -188,6 +188,7 @@
     "driveFolderId": "ID ou URL du dossier Drive",
     "driveFolderPlaceholder": "Collez le lien ou l'ID du dossier Google Drive",
     "driveFolderHelp": "Choisissez un dossier Drive à indexer. Une seule source par profil.",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "Parcourir",
     "driveFolderSelected": "Sélectionné : {{name}}",
     "driveFolderSearch": "Rechercher des dossiers",

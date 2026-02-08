@@ -1,6 +1,6 @@
-# Docs4ai - Cross-Platform Folder Sync App
+# Docs4ai - Local-First AI for Your Documents
 
-A native desktop application that watches a folder and automatically syncs it with a sqlite-vec database. Built with Electron, works on **macOS, Windows, and Linux**.
+Search, chat, and map your documents with AI, with the option to run entirely on-device using local embeddings and a local LLM. Docs4ai syncs folders (and Google Drive) into a sqlite-vec index so you can query privately across **macOS, Windows, and Linux**.
 
 ## Features
 
@@ -50,7 +50,7 @@ Google Docs/Sheets/Slides stored in Drive are exported on demand to supported fo
 
 - Node.js 18 or later
 - npm
-- Google Drive OAuth client ID/secret (optional, only for Drive sync)
+- Google Drive OAuth client ID/secret (optional, user-provided for Drive sync)
 
 ## Install From Source (One-Liners)
 
@@ -149,7 +149,16 @@ Built applications are output to the `release/` directory.
 
 ### Google Drive Sync
 
-To enable Drive sync, set these environment variables before launching the app:
+Docs4ai does not ship Google OAuth credentials. To enable Drive sync, bring your own:
+
+Quickstart: https://developers.google.com/drive/api/quickstart/nodejs
+
+1. Create a Google Cloud project.
+2. Enable the Google Drive API.
+3. Configure the OAuth consent screen (External is fine for personal use).
+4. If the app is in Testing, add your Google account under Test users.
+5. Create OAuth Client ID credentials (Application type: Desktop app).
+6. Set these environment variables before launching the app:
 
 ```bash
 export GOOGLE_DRIVE_CLIENT_ID="your-client-id"

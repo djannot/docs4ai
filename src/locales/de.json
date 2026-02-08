@@ -188,6 +188,7 @@
     "driveFolderId": "Drive-Ordner-ID oder URL",
     "driveFolderPlaceholder": "Google-Drive-Ordnerlink oder -ID einfügen",
     "driveFolderHelp": "Wählen Sie einen Drive-Ordner zum Indizieren. Nur eine Quelle pro Profil.",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "Durchsuchen",
     "driveFolderSelected": "Ausgewählt: {{name}}",
     "driveFolderSearch": "Ordner suchen",

@@ -192,6 +192,7 @@
     "driveFolderId": "Drive folder ID or URL",
     "driveFolderPlaceholder": "Paste Google Drive folder link or ID",
     "driveFolderHelp": "Choose a Drive folder to index. Only one source per profile.",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "Browse",
     "driveFolderSelected": "Selected: {{name}}",
     "driveFolderSearch": "Search folders",

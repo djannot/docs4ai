@@ -188,6 +188,7 @@
     "driveFolderId": "ID o URL cartella Drive",
     "driveFolderPlaceholder": "Incolla il link o l'ID della cartella Google Drive",
     "driveFolderHelp": "Scegli una cartella Drive da indicizzare. Una sola origine per profilo.",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "Sfoglia",
     "driveFolderSelected": "Selezionato: {{name}}",
     "driveFolderSearch": "Cerca cartelle",

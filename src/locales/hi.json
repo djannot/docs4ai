@@ -188,6 +188,7 @@
     "driveFolderId": "Drive फ़ोल्डर ID या URL",
     "driveFolderPlaceholder": "Google Drive फ़ोल्डर लिंक या ID पेस्ट करें",
     "driveFolderHelp": "इंडेक्स करने के लिए Drive फ़ोल्डर चुनें। प्रति प्रोफ़ाइल केवल एक स्रोत।",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "ब्राउज़ करें",
     "driveFolderSelected": "चयनित: {{name}}",
     "driveFolderSearch": "फ़ोल्डर खोजें",

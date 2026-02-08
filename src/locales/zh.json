@@ -188,6 +188,7 @@
     "driveFolderId": "Drive 文件夹 ID 或 URL",
     "driveFolderPlaceholder": "粘贴 Google Drive 文件夹链接或 ID",
     "driveFolderHelp": "选择要索引的 Drive 文件夹。每个配置文件仅限一种来源。",
+    "driveCredentialsHelp": "Drive requires your own OAuth credentials. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in your environment, then restart the app.",
     "driveFolderBrowse": "浏览",
     "driveFolderSelected": "已选择：{{name}}",
     "driveFolderSearch": "搜索文件夹",
