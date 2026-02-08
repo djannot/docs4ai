@@ -1,0 +1,38 @@
+Docs4ai
+
+Summary
+Search, chat, and map your documents with AI, with the option to run entirely on-device using local embeddings and a local LLM. Docs4ai syncs folders (and Google Drive) into a sqlite-vec index, exposes your data via a built-in MCP server, and lets you query privately across macOS, Windows, and Linux.
+
+Primary use cases
+- Private document search with semantic and keyword matching
+- Local-first knowledge discovery with a 2D semantic map
+- Connect external AI clients to your docs via MCP
+- Multi-profile setups for separate knowledge bases
+
+Key features
+- Local or OpenAI embeddings with sqlite-vec
+- Google Drive and local folder sync
+- Built-in MCP server (HTTP, MCP-compatible)
+- Knowledge Map visualization for semantic neighborhoods
+- In-app chat with document-grounded answers
+- Cross-platform Electron app
+
+MCP
+- Built-in MCP server exposes your synced data over HTTP
+- Default port: 3333 (configurable in-app)
+- Endpoint: /mcp (POST)
+
+Tech stack
+- Electron + TypeScript
+- better-sqlite3 + sqlite-vec
+- Express (MCP server)
+
+Getting started
+- Install dependencies: npm install
+- Rebuild native modules: npm run rebuild
+- Run the app: npm start
+
+Links
+- README: https://github.com/djannot/docs4ai#readme
+- Issues: https://github.com/djannot/docs4ai/issues
+- License: Apache-2.0
