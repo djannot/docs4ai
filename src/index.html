@@ -40,6 +40,13 @@
             gap: 10px;
         }
 
+        .app-title-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            object-fit: contain;
+        }
+
         .language-selector {
             position: absolute;
             top: 0;
@@ -1093,7 +1100,7 @@
                     <option value="pt">Português</option>
                 </select>
             </div>
-            <h1>📄 Docs4ai</h1>
+            <h1 class="app-title"><img src="../assets/icon.png" alt="Docs4ai" class="app-title-icon"> Docs4ai</h1>
             <div class="status-indicator">
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">Not syncing</span>

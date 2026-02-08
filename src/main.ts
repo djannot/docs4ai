@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, Tray, nativeImage, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import * as http from 'http';
+import * as fs from 'fs';
 import * as path from 'path';
 import Store from 'electron-store';
 import { google } from 'googleapis';
@@ -14,6 +15,30 @@ import { EmbeddingService, InvalidApiKeyError, EmbeddingProvider, getEmbeddingDi
 import { McpServer } from './mcp-server';
 import { initI18n, t, changeLanguage, getCurrentLanguage, getAvailableLanguages, isInitialized } from './i18n';
 import { LLMChatService, LLMProvider, ChatMessage, MCP_TOOLS, executeMcpToolCall, ToolCall } from './llm-chat';
+
+function resolveAssetPath(...segments: string[]): string | null {
+    const candidates = [
+        path.join(app.getAppPath(), ...segments),
+        path.join(__dirname, '..', ...segments),
+        path.join(process.resourcesPath, ...segments)
+    ];
+
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
+function getAppIconPath(): string | null {
+    return resolveAssetPath('assets', 'icon.png');
+}
+
+function getTrayIconPath(): string | null {
+    return resolveAssetPath('assets', 'icon-tray.png') || resolveAssetPath('assets', 'icon.png');
+}
 
 // Helper to migrate old provider values to current ones
 function migrateEmbeddingProvider(provider: string | undefined): EmbeddingProvider {
@@ -220,9 +245,11 @@ let syncCancelled: Map<string, boolean> = new Map();
 const portUsage: Map<number, string> = new Map(); // port -> profileId
 
 function createWindow() {
+    const appIconPath = getAppIconPath();
     mainWindow = new BrowserWindow({
         width: 600,
         height: 750,
+        icon: appIconPath || undefined,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -252,6 +279,74 @@ function createWindow() {
 function createTrayIcon(state: 'idle' | 'syncing' | 'processing'): Electron.NativeImage {
     // Linux typically uses 22px, macOS uses 22px, Windows uses 16px
     const size = process.platform === 'win32' ? 16 : 22;
+    const trayPath = getTrayIconPath();
+    const baseIcon = trayPath ? nativeImage.createFromPath(trayPath) : null;
+    if (baseIcon && !baseIcon.isEmpty()) {
+        const resized = baseIcon.resize({ width: size, height: size });
+        const bitmap = resized.toBitmap();
+        const hasTransparency = bitmap.some((_, index) => index % 4 === 3 && bitmap[index] < 250);
+        if (process.platform === 'darwin') {
+            if (hasTransparency) {
+                return resized;
+            }
+            if (bitmap.length > 0) {
+                const rgba = Buffer.alloc(bitmap.length);
+                for (let i = 0; i < bitmap.length; i += 4) {
+                    const r = bitmap[i + 2];
+                    const g = bitmap[i + 1];
+                    const b = bitmap[i];
+                    const isNearWhite = r > 245 && g > 245 && b > 245;
+                    rgba[i] = r;
+                    rgba[i + 1] = g;
+                    rgba[i + 2] = b;
+                    rgba[i + 3] = isNearWhite ? 0 : 255;
+                }
+                return nativeImage.createFromBuffer(rgba, { width: size, height: size });
+            }
+        } else if (bitmap.length > 0) {
+            const rgba = Buffer.alloc(bitmap.length);
+            for (let i = 0; i < bitmap.length; i += 4) {
+                rgba[i] = bitmap[i + 2];
+                rgba[i + 1] = bitmap[i + 1];
+                rgba[i + 2] = bitmap[i];
+                rgba[i + 3] = bitmap[i + 3];
+            }
+
+            let statusColor = { r: 150, g: 150, b: 150 };
+            if (state === 'syncing') {
+                statusColor = { r: 52, g: 199, b: 89 };
+            } else if (state === 'processing') {
+                statusColor = { r: 255, g: 149, b: 0 };
+            }
+
+            const dotRadius = process.platform === 'linux' ? 4 : 3;
+            const dotX = size - dotRadius - 2;
+            const dotY = size - dotRadius - 2;
+
+            for (let dy = -dotRadius; dy <= dotRadius; dy++) {
+                for (let dx = -dotRadius; dx <= dotRadius; dx++) {
+                    if (dx * dx + dy * dy <= dotRadius * dotRadius) {
+                        const px = dotX + dx;
+                        const py = dotY + dy;
+                        if (px >= 0 && px < size && py >= 0 && py < size) {
+                            const idx = (py * size + px) * 4;
+                            rgba[idx] = statusColor.r;
+                            rgba[idx + 1] = statusColor.g;
+                            rgba[idx + 2] = statusColor.b;
+                            rgba[idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+
+            return nativeImage.createFromBuffer(rgba, { width: size, height: size });
+        }
+
+        if (process.platform !== 'darwin') {
+            return resized;
+        }
+    }
+
     const canvas = Buffer.alloc(size * size * 4);
     
     // Fill with transparent background
@@ -330,11 +425,7 @@ function createTrayIcon(state: 'idle' | 'syncing' | 'processing'): Electron.Nati
         }
     }
     
-    const icon = nativeImage.createFromBuffer(canvas, { width: size, height: size });
-    if (process.platform === 'darwin') {
-        icon.setTemplateImage(true);
-    }
-    return icon;
+    return nativeImage.createFromBuffer(canvas, { width: size, height: size });
 }
 
 function getOverallStatus(): { state: 'idle' | 'syncing' | 'processing', totalFiles: number, totalChunks: number, syncingCount: number } {
@@ -454,24 +545,7 @@ function updateTray() {
 
 function createTray() {
     try {
-        // Try to use the icon file first, fallback to generated icon
-        let iconImage: Electron.NativeImage;
-        const iconPath = path.join(__dirname, '..', 'assets', 'icon.svg');
-        try {
-            iconImage = nativeImage.createFromPath(iconPath);
-            // If SVG doesn't work, try to resize the generated icon
-            if (iconImage.isEmpty()) {
-                throw new Error('SVG icon empty, using generated icon');
-            }
-            // Resize to appropriate size for tray
-            const size = process.platform === 'win32' ? 16 : 22;
-            iconImage = iconImage.resize({ width: size, height: size });
-        } catch (error) {
-            console.log('Could not load icon file, using generated icon:', error);
-            iconImage = createTrayIcon('idle');
-        }
-        
-        tray = new Tray(iconImage);
+        tray = new Tray(createTrayIcon('idle'));
         
         // Set tooltip
         tray.setToolTip('Docs4ai');
@@ -2533,6 +2607,10 @@ async function handleInvalidApiKey(profileId: string) {
 }
 
 app.whenReady().then(async () => {
+    const appIconPath = getAppIconPath();
+    if (appIconPath && process.platform === 'darwin') {
+        app.dock.setIcon(appIconPath);
+    }
     // Initialize i18n before creating UI
     const appSettings = store.store;
     await initI18n(appSettings.language);
